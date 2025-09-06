@@ -7,7 +7,7 @@ services:
       dockerfile: Dockerfile
     container_name: zulip-refinement-bot
     restart: unless-stopped
-    
+
     # Environment variables (override in .env file)
     environment:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
@@ -21,12 +21,12 @@ services:
       - MAX_ISSUES_PER_BATCH=${MAX_ISSUES_PER_BATCH:-6}
       - MAX_TITLE_LENGTH=${MAX_TITLE_LENGTH:-50}
       - GITHUB_TIMEOUT=${GITHUB_TIMEOUT:-10.0}
-    
+
     # Persistent volume for database
     volumes:
       - bot_data:/app/data
       - ./logs:/app/logs  # Optional: mount logs directory
-    
+
     # Resource limits
     deploy:
       resources:
@@ -36,7 +36,7 @@ services:
         reservations:
           cpus: '0.1'
           memory: 128M
-    
+
     # Health check
     healthcheck:
       test: ["CMD", "conda", "run", "-n", "zulip-refinement-bot", "python", "-c", "import sys; sys.exit(0)"]
@@ -44,14 +44,14 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-    
+
     # Logging configuration
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
-    
+
     # Network configuration
     networks:
       - bot_network

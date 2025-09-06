@@ -6,8 +6,6 @@ import os
 import tempfile
 from pathlib import Path
 
-import pytest
-
 from zulip_refinement_bot.config import Config
 
 
@@ -72,7 +70,7 @@ class TestConfig:
         """Test that database directory is created."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "subdir" / "test.db"
-            
+
             config = Config(
                 zulip_email="test@example.com",
                 zulip_api_key="test_key",
@@ -93,7 +91,7 @@ class TestConfig:
 
         try:
             config = Config(_env_file=env_file)
-            
+
             assert config.zulip_email == "env@example.com"
             assert config.zulip_api_key == "env_key"
             assert config.zulip_site == "https://env.zulipchat.com"

@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import tempfile
+from collections.abc import Generator
 from pathlib import Path
-from typing import Generator
 from unittest.mock import MagicMock
 
 import pytest
@@ -19,9 +19,9 @@ def temp_db() -> Generator[Path, None, None]:
     """Create a temporary database file for testing."""
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
         db_path = Path(tmp.name)
-    
+
     yield db_path
-    
+
     # Cleanup
     if db_path.exists():
         db_path.unlink()
@@ -76,16 +76,16 @@ def sample_message() -> dict:
 def sample_issues() -> list:
     """Create sample issue data for testing."""
     from zulip_refinement_bot.models import IssueData
-    
+
     return [
         IssueData(
             issue_number="1234",
             title="Fix memory leak in solver",
-            url="https://github.com/conda/conda/issues/1234"
+            url="https://github.com/conda/conda/issues/1234",
         ),
         IssueData(
             issue_number="1235",
             title="Improve dependency resolution",
-            url="https://github.com/conda/conda/issues/1235"
+            url="https://github.com/conda/conda/issues/1235",
         ),
     ]

@@ -42,8 +42,6 @@ dev = [
     "pytest>=7.0",
     "pytest-cov",
     "pytest-asyncio",
-    "black",
-    "isort",
     "flake8",
     "mypy",
     "pre-commit",
@@ -76,36 +74,7 @@ include = [
     "/LICENSE",
 ]
 
-# Black configuration
-[tool.black]
-line-length = 100
-target-version = ['py311']
-include = '\.pyi?$'
-extend-exclude = '''
-/(
-  # directories
-  \.eggs
-  | \.git
-  | \.hg
-  | \.mypy_cache
-  | \.tox
-  | \.venv
-  | build
-  | dist
-)/
-'''
 
-# isort configuration
-[tool.isort]
-profile = "black"
-line_length = 100
-multi_line_output = 3
-include_trailing_comma = true
-force_grid_wrap = 0
-use_parentheses = true
-ensure_newline_before_comments = true
-
-# MyPy configuration
 [tool.mypy]
 python_version = "3.11"
 warn_return_any = true
@@ -124,6 +93,17 @@ strict_equality = true
 [[tool.mypy.overrides]]
 module = "zulip.*"
 ignore_missing_imports = true
+
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_decorators = false
+
+[[tool.mypy.overrides]]
+module = "zulip_refinement_bot.cli"
+disallow_untyped_decorators = false
 
 # Pytest configuration
 [tool.pytest.ini_options]
@@ -166,6 +146,8 @@ exclude_lines = [
 [tool.ruff]
 target-version = "py311"
 line-length = 100
+
+[tool.ruff.lint]
 select = [
     "E",  # pycodestyle errors
     "W",  # pycodestyle warnings
@@ -176,11 +158,22 @@ select = [
     "UP", # pyupgrade
 ]
 ignore = [
-    "E501",  # line too long, handled by black
     "B008",  # do not perform function calls in argument defaults
     "C901",  # too complex
 ]
 
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 "tests/*" = ["B011"]
+"src/zulip_refinement_bot/bot.py" = ["E501"]
+"src/zulip_refinement_bot/github_api.py" = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+skips = ["B101"]  # Skip assert_used check

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 import httpx
 import structlog
 
@@ -15,13 +13,13 @@ class GitHubAPI:
 
     def __init__(self, timeout: float = 10.0):
         """Initialize GitHub API client.
-        
+
         Args:
             timeout: Request timeout in seconds
         """
         self.timeout = timeout
 
-    def fetch_issue_title(self, owner: str, repo: str, issue_number: str) -> Optional[str]:
+    def fetch_issue_title(self, owner: str, repo: str, issue_number: str) -> str | None:
         """Fetch issue title from GitHub API.
 
         Args:
@@ -33,7 +31,7 @@ class GitHubAPI:
             Issue title if successful, None if failed
         """
         url = f"https://api.github.com/repos/{owner}/{repo}/issues/{issue_number}"
-        
+
         try:
             with httpx.Client() as client:
                 response = client.get(url, timeout=self.timeout)
@@ -41,21 +39,19 @@ class GitHubAPI:
             if response.status_code == 200:
                 issue_data = response.json()
                 title = issue_data.get("title", "")
+                if not isinstance(title, str):
+                    logger.error("Invalid title type from GitHub API", title_type=type(title))
+                    return None
                 logger.info(
                     "Successfully fetched issue title",
                     owner=owner,
                     repo=repo,
                     issue_number=issue_number,
-                    title=title[:50] + "..." if len(title) > 50 else title
+                    title=title[:50] + "..." if len(title) > 50 else title,
                 )
                 return title
             elif response.status_code == 404:
-                logger.warning(
-                    "Issue not found",
-                    owner=owner,
-                    repo=repo,
-                    issue_number=issue_number
-                )
+                logger.warning("Issue not found", owner=owner, repo=repo, issue_number=issue_number)
                 return None
             else:
                 logger.error(
@@ -63,7 +59,7 @@ class GitHubAPI:
                     owner=owner,
                     repo=repo,
                     issue_number=issue_number,
-                    status_code=response.status_code
+                    status_code=response.status_code,
                 )
                 return None
 
@@ -73,7 +69,7 @@ class GitHubAPI:
                 owner=owner,
                 repo=repo,
                 issue_number=issue_number,
-                error=str(e)
+                error=str(e),
             )
             return None
         except ValueError as e:
@@ -82,13 +78,11 @@ class GitHubAPI:
                 owner=owner,
                 repo=repo,
                 issue_number=issue_number,
-                error=str(e)
+                error=str(e),
             )
             return None
 
-    async def fetch_issue_title_async(
-        self, owner: str, repo: str, issue_number: str
-    ) -> Optional[str]:
+    async def fetch_issue_title_async(self, owner: str, repo: str, issue_number: str) -> str | None:
         """Async version of fetch_issue_title.
 
         Args:
@@ -100,7 +94,7 @@ class GitHubAPI:
             Issue title if successful, None if failed
         """
         url = f"https://api.github.com/repos/{owner}/{repo}/issues/{issue_number}"
-        
+
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(url, timeout=self.timeout)
@@ -108,20 +102,22 @@ class GitHubAPI:
             if response.status_code == 200:
                 issue_data = response.json()
                 title = issue_data.get("title", "")
+                if not isinstance(title, str):
+                    logger.error(
+                        "Invalid title type from GitHub API (async)", title_type=type(title)
+                    )
+                    return None
                 logger.info(
                     "Successfully fetched issue title (async)",
                     owner=owner,
                     repo=repo,
                     issue_number=issue_number,
-                    title=title[:50] + "..." if len(title) > 50 else title
+                    title=title[:50] + "..." if len(title) > 50 else title,
                 )
                 return title
             elif response.status_code == 404:
                 logger.warning(
-                    "Issue not found (async)",
-                    owner=owner,
-                    repo=repo,
-                    issue_number=issue_number
+                    "Issue not found (async)", owner=owner, repo=repo, issue_number=issue_number
                 )
                 return None
             else:
@@ -130,7 +126,7 @@ class GitHubAPI:
                     owner=owner,
                     repo=repo,
                     issue_number=issue_number,
-                    status_code=response.status_code
+                    status_code=response.status_code,
                 )
                 return None
 
@@ -140,7 +136,7 @@ class GitHubAPI:
                 owner=owner,
                 repo=repo,
                 issue_number=issue_number,
-                error=str(e)
+                error=str(e),
             )
             return None
         except ValueError as e:
@@ -149,6 +145,6 @@ class GitHubAPI:
                 owner=owner,
                 repo=repo,
                 issue_number=issue_number,
-                error=str(e)
+                error=str(e),
             )
             return None

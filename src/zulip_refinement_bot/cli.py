@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Optional
 
 import structlog
 import typer
@@ -25,13 +24,13 @@ console = Console()
 
 def setup_logging(log_level: str = "INFO", log_format: str = "json") -> None:
     """Set up structured logging.
-    
+
     Args:
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR)
         log_format: Log format (json, console)
     """
     level = getattr(structlog.stdlib, log_level.upper(), structlog.stdlib.INFO)
-    
+
     if log_format.lower() == "console":
         # Rich console logging for development
         structlog.configure(
@@ -43,21 +42,22 @@ def setup_logging(log_level: str = "INFO", log_format: str = "json") -> None:
                 structlog.processors.TimeStamper(fmt="iso"),
                 structlog.processors.StackInfoRenderer(),
                 structlog.processors.format_exc_info,
-                structlog.dev.ConsoleRenderer(colors=True)
+                structlog.dev.ConsoleRenderer(colors=True),
             ],
             context_class=dict,
             logger_factory=structlog.stdlib.LoggerFactory(),
             wrapper_class=structlog.stdlib.BoundLogger,
             cache_logger_on_first_use=True,
         )
-        
+
         # Configure standard library logging
         import logging
+
         logging.basicConfig(
             format="%(message)s",
             stream=sys.stdout,
             level=level,
-            handlers=[RichHandler(console=console, rich_tracebacks=True)]
+            handlers=[RichHandler(console=console, rich_tracebacks=True)],
         )
     else:
         # JSON logging for production
@@ -70,7 +70,7 @@ def setup_logging(log_level: str = "INFO", log_format: str = "json") -> None:
                 structlog.processors.TimeStamper(fmt="iso"),
                 structlog.processors.StackInfoRenderer(),
                 structlog.processors.format_exc_info,
-                structlog.processors.JSONRenderer()
+                structlog.processors.JSONRenderer(),
             ],
             context_class=dict,
             logger_factory=structlog.stdlib.LoggerFactory(),
@@ -81,7 +81,7 @@ def setup_logging(log_level: str = "INFO", log_format: str = "json") -> None:
 
 @app.command()
 def run(
-    config_file: Optional[Path] = typer.Option(
+    config_file: Path | None = typer.Option(
         None,
         "--config",
         "-c",
@@ -106,28 +106,28 @@ def run(
     ),
 ) -> None:
     """Run the Zulip Refinement Bot."""
-    
+
     # Set up logging first
     setup_logging(log_level, log_format)
     logger = structlog.get_logger(__name__)
-    
+
     try:
         # Load configuration
         if config_file:
             config = Config(_env_file=config_file)
         else:
             config = Config()
-            
+
         # Override log settings from CLI
         config.log_level = log_level.upper()
         config.log_format = log_format.lower()
-        
+
         logger.info("Starting Zulip Refinement Bot", version=__version__)
-        
+
         # Create and run bot
         bot = RefinementBot(config)
         bot.run()
-        
+
     except KeyboardInterrupt:
         logger.info("Bot stopped by user")
         console.print("\n👋 Bot stopped gracefully")
@@ -160,11 +160,11 @@ def init_config(
     ),
 ) -> None:
     """Generate a configuration file template."""
-    
+
     if output.exists() and not force:
         console.print(f"❌ Configuration file {output} already exists. Use --force to overwrite.")
         sys.exit(1)
-    
+
     config_template = """# Zulip Refinement Bot Configuration
 # Copy this file to .env and fill in your values
 
@@ -192,7 +192,7 @@ GITHUB_TIMEOUT=10.0
 LOG_LEVEL=INFO
 LOG_FORMAT=console
 """
-    
+
     try:
         output.write_text(config_template)
         console.print(f"✅ Configuration template written to {output}")

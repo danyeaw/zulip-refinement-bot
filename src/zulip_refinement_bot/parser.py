@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-from typing import List, Set
 
 import structlog
 
@@ -21,7 +20,7 @@ class InputParser:
 
     def __init__(self, config: Config, github_api: GitHubAPI):
         """Initialize input parser.
-        
+
         Args:
             config: Bot configuration
             github_api: GitHub API client
@@ -56,8 +55,8 @@ class InputParser:
             logger.warning("Empty batch input")
             return ParseResult(success=False, issues=[], error=error_msg)
 
-        issues: List[IssueData] = []
-        seen_numbers: Set[str] = set()
+        issues: list[IssueData] = []
+        seen_numbers: set[str] = set()
 
         for line in lines:
             # Try GitHub URL format
@@ -81,7 +80,7 @@ class InputParser:
                         "Failed to fetch issue title",
                         owner=owner,
                         repo=repo,
-                        issue_number=issue_number
+                        issue_number=issue_number,
                     )
                     return ParseResult(success=False, issues=[], error=error_msg)
 
@@ -90,9 +89,7 @@ class InputParser:
                     title = title[: self.config.max_title_length - 3] + "..."
 
                 seen_numbers.add(issue_number)
-                issues.append(
-                    IssueData(issue_number=issue_number, title=title, url=line)
-                )
+                issues.append(IssueData(issue_number=issue_number, title=title, url=line))
                 continue
 
             # Invalid format
@@ -112,7 +109,7 @@ class InputParser:
             logger.warning(
                 "Too many issues in batch",
                 issue_count=len(issues),
-                max_allowed=self.config.max_issues_per_batch
+                max_allowed=self.config.max_issues_per_batch,
             )
             return ParseResult(success=False, issues=[], error=error_msg)
 
@@ -121,24 +118,24 @@ class InputParser:
 
     def parse_estimation_input(self, content: str) -> dict[str, int]:
         """Parse story point estimation input.
-        
+
         Expected format: "#1234: 5, #1235: 8, #1236: 3"
-        
+
         Args:
             content: Raw estimation input
-            
+
         Returns:
             Dictionary mapping issue numbers to story points
         """
         estimates = {}
-        
+
         # Pattern to match "#1234: 5" format
         pattern = re.compile(r"#(\d+):\s*(\d+)")
-        
+
         for match in pattern.finditer(content):
             issue_number = match.group(1)
             points = int(match.group(2))
-            
+
             # Validate story points are in allowed scale
             valid_points = [1, 2, 3, 5, 8, 13, 21]
             if points not in valid_points:
@@ -146,11 +143,11 @@ class InputParser:
                     "Invalid story points value",
                     issue_number=issue_number,
                     points=points,
-                    valid_points=valid_points
+                    valid_points=valid_points,
                 )
                 continue
-                
+
             estimates[issue_number] = points
-            
+
         logger.info("Parsed estimation input", estimates=estimates)
         return estimates

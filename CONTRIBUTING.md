@@ -70,10 +70,9 @@ pytest
 # Run with coverage
 pytest --cov=src/zulip_refinement_bot --cov-report=html
 
-# Run linting
+# Run linting and formatting
 ruff check src/ tests/
-black --check src/ tests/
-isort --check-only src/ tests/
+ruff format --check src/ tests/
 mypy src/
 
 # Run all pre-commit hooks
@@ -114,9 +113,7 @@ Then create a pull request on GitHub with:
 
 ### Code Style
 
-- **Black** for code formatting (line length: 100)
-- **isort** for import sorting
-- **ruff** for linting
+- **Ruff** for code formatting and linting (line length: 100)
 - **mypy** for type checking
 
 ### Code Quality Requirements
@@ -147,7 +144,7 @@ class ExampleClass:
 
     def __init__(self, config: Config) -> None:
         """Initialize the class.
-        
+
         Args:
             config: Configuration object
         """
@@ -155,19 +152,19 @@ class ExampleClass:
 
     def process_data(self, data: str) -> Optional[str]:
         """Process input data and return result.
-        
+
         Args:
             data: Input data to process
-            
+
         Returns:
             Processed data or None if processing fails
-            
+
         Raises:
             ValueError: If data is invalid
         """
         if not data:
             raise ValueError("Data cannot be empty")
-            
+
         logger.info("Processing data", data_length=len(data))
         return data.upper()
 ```
@@ -202,10 +199,10 @@ tests/
    def test_create_batch():
        # Arrange
        db_manager = DatabaseManager(":memory:")
-       
+
        # Act
        batch_id = db_manager.create_batch("2024-01-01", "2024-01-03", "Test User")
-       
+
        # Assert
        assert isinstance(batch_id, int)
        assert batch_id > 0
@@ -281,7 +278,7 @@ def fetch_issue_title(self, owner: str, repo: str, issue_number: str) -> Optiona
 
     Raises:
         ValueError: If parameters are invalid
-        
+
     Example:
         >>> api = GitHubAPI()
         >>> title = api.fetch_issue_title("conda", "conda", "15169")
@@ -327,8 +324,8 @@ For new features, please:
 ### Before Submitting
 
 - [ ] Tests pass locally (`pytest`)
-- [ ] Code is formatted (`black`, `isort`)
-- [ ] Linting passes (`ruff`, `mypy`)
+- [ ] Code is formatted and linted (`ruff`)
+- [ ] Type checking passes (`mypy`)
 - [ ] Documentation is updated
 - [ ] Changelog entry added (if applicable)
 

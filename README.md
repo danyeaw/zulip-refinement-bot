@@ -3,7 +3,7 @@
 [![CI](https://github.com/yourusername/zulip-refinement-bot/workflows/CI/badge.svg)](https://github.com/yourusername/zulip-refinement-bot/actions)
 [![codecov](https://codecov.io/gh/yourusername/zulip-refinement-bot/branch/main/graph/badge.svg)](https://codecov.io/gh/yourusername/zulip-refinement-bot)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
 A modern, production-ready Zulip bot for batch story point estimation and refinement workflows. Built with Python 3.11+, conda for dependency management, and designed for easy deployment to production environments.
 
@@ -18,7 +18,7 @@ A modern, production-ready Zulip bot for batch story point estimation and refine
 - **🐳 Docker Ready**: Production-ready containerization
 - **🧪 Fully Tested**: Comprehensive test suite with high coverage
 - **📝 Type Safe**: Full type hints and mypy validation
-- **🔧 Modern Tooling**: Black, isort, ruff, and pre-commit hooks
+- **🔧 Modern Tooling**: Ruff for formatting and linting, mypy for type checking, and pre-commit hooks
 
 ## 🚀 Quick Start
 
@@ -193,11 +193,8 @@ pytest -m integration  # Only integration tests
 ### Code Quality
 
 ```bash
-# Format code
-black src/ tests/
-isort src/ tests/
-
-# Lint code
+# Format and lint code
+ruff format src/ tests/
 ruff check src/ tests/
 mypy src/
 
@@ -331,8 +328,8 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 - ✅ **100% test coverage** for new features
 - 📝 **Type hints** for all functions
 - 📚 **Docstrings** for public APIs
-- 🎨 **Black** code formatting
-- 🔍 **Ruff** linting compliance
+- 🎨 **Ruff** code formatting and linting
+- 🔍 **mypy** type checking compliance
 - 🏷️ **Conventional commits**
 
 ## 📄 License

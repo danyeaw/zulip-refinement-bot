@@ -10,11 +10,10 @@ dependencies:
   - pytest>=7.0
   - pytest-cov
   - pytest-asyncio
-  - black
-  - isort
   - flake8
   - mypy
   - pre-commit
+  - ruff
   - pip:
     - zulip>=0.8.0
     - python-dotenv>=1.0.0

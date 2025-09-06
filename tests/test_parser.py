@@ -93,9 +93,7 @@ https://github.com/conda/conda/issues/15169"""
     def test_too_many_issues(self, parser: InputParser, mock_github_api: MagicMock):
         """Test too many GitHub URLs."""
         # Create more issues than the limit (6 in test config)
-        issues_list = [
-            f"https://github.com/conda/conda/issues/{1000+i}" for i in range(7)
-        ]
+        issues_list = [f"https://github.com/conda/conda/issues/{1000 + i}" for i in range(7)]
         content = "start batch\n" + "\n".join(issues_list)
 
         mock_github_api.fetch_issue_title.return_value = "Test issue"

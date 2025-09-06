@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
 
 from pydantic import BaseModel, Field
 
@@ -19,13 +18,13 @@ class IssueData(BaseModel):
 class BatchData(BaseModel):
     """Represents a refinement batch."""
 
-    id: Optional[int] = Field(None, description="Database ID")
+    id: int | None = Field(None, description="Database ID")
     date: str = Field(..., description="Batch date (YYYY-MM-DD)")
     deadline: str = Field(..., description="Deadline in ISO format")
     facilitator: str = Field(..., description="Batch facilitator name")
     status: str = Field(default="active", description="Batch status")
-    created_at: Optional[datetime] = Field(None, description="Creation timestamp")
-    issues: List[IssueData] = Field(default_factory=list, description="Issues in batch")
+    created_at: datetime | None = Field(None, description="Creation timestamp")
+    issues: list[IssueData] = Field(default_factory=list, description="Issues in batch")
 
 
 class MessageData(BaseModel):
@@ -42,7 +41,7 @@ class ParseResult(BaseModel):
     """Result of parsing batch input."""
 
     success: bool = Field(..., description="Whether parsing was successful")
-    issues: List[IssueData] = Field(default_factory=list, description="Parsed issues")
+    issues: list[IssueData] = Field(default_factory=list, description="Parsed issues")
     error: str = Field(default="", description="Error message if parsing failed")
 
 
@@ -59,8 +58,8 @@ class BatchResults(BaseModel):
     """Results of a completed batch."""
 
     batch_id: int = Field(..., description="Batch ID")
-    votes: List[EstimationVote] = Field(..., description="All votes")
-    consensus: Dict[str, int] = Field(..., description="Consensus estimates per issue")
+    votes: list[EstimationVote] = Field(..., description="All votes")
+    consensus: dict[str, int] = Field(..., description="Consensus estimates per issue")
     completed_at: datetime = Field(
         default_factory=datetime.utcnow, description="Completion timestamp"
     )

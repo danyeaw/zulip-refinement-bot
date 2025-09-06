@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
-from typing import List
+from typing import Any
 
 from pydantic import BaseSettings, Field
 
@@ -24,7 +23,7 @@ class Config(BaseSettings):
     max_title_length: int = Field(default=50, env="MAX_TITLE_LENGTH")
 
     # Voter list
-    voter_list: List[str] = Field(
+    voter_list: list[str] = Field(
         default=[
             "jaimergp",
             "Jannis Leidel",
@@ -57,7 +56,7 @@ class Config(BaseSettings):
         env_file_encoding = "utf-8"
         case_sensitive = False
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any) -> None:
         """Initialize configuration and ensure database directory exists."""
         super().__init__(**kwargs)
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
