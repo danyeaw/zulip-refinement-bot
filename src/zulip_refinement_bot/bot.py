@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import time
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, TypedDict, cast
 
 import structlog
 import zulip
@@ -15,6 +16,20 @@ from .models import IssueData, MessageData
 from .parser import InputParser
 
 logger = structlog.get_logger(__name__)
+
+
+class ZulipResponse(TypedDict, total=False):
+    """Type definition for Zulip API responses.
+
+    Note: Uses total=False since most fields are optional.
+    The API uses "retry-after" (with hyphen) which we access via dict key.
+    """
+
+    result: str  # "success" or "error" - always present
+    msg: str  # Error message or empty string on success - always present
+    id: int  # Message ID (present on successful send_message)
+    code: str  # Error code (present on error)
+    # Note: "retry-after" field accessed via response.get("retry-after")
 
 
 class RefinementBot:
@@ -296,7 +311,7 @@ Posting to #{self.config.stream_name} now..."""
         topic_name = f"Refinement: {date_str} ({len(issues)} issues)"
 
         try:
-            response = self.zulip_client.send_message(
+            response = self._send_message_with_retry(
                 {
                     "type": "stream",
                     "to": self.config.stream_name,
@@ -315,8 +330,23 @@ Posting to #{self.config.stream_name} now..."""
                     topic=topic_name,
                     message_id=message_id,
                 )
+            elif response.get("result") == "error":
+                # Handle API errors more specifically
+                error_code = response.get("code", "UNKNOWN")
+                error_msg = response.get("msg", "Unknown error")
+                logger.error(
+                    "Failed to create batch topic - API error",
+                    batch_id=batch_id,
+                    error_code=error_code,
+                    error_msg=error_msg,
+                    response=response,
+                )
             else:
-                logger.warning("Message sent but no ID returned", response=response)
+                logger.warning(
+                    "Unexpected response format from Zulip API",
+                    batch_id=batch_id,
+                    response=response,
+                )
 
         except Exception as e:
             logger.error("Failed to create batch topic", batch_id=batch_id, error=str(e))
@@ -522,13 +552,22 @@ Posting to #{self.config.stream_name} now..."""
             content: Reply content
         """
         try:
-            self.zulip_client.send_message(
+            response = self._send_message_with_retry(
                 {
                     "type": "private",
                     "to": [message["sender_email"]],
                     "content": content,
                 }
             )
+
+            if response.get("result") == "success":
+                logger.info("Sent private message reply", recipient=message["sender_email"])
+            else:
+                logger.error(
+                    "Failed to send private message reply - API error",
+                    recipient=message["sender_email"],
+                    response=response,
+                )
         except Exception as e:
             logger.error("Failed to send reply", error=str(e))
 
@@ -542,3 +581,60 @@ Posting to #{self.config.stream_name} now..."""
 
         # Register message handler and start listening
         self.zulip_client.call_on_each_message(message_handler)
+
+    def _send_message_with_retry(
+        self, message_data: dict[str, Any], max_retries: int = 3
+    ) -> ZulipResponse:
+        """Send a message with automatic retry on rate limits.
+
+        Args:
+            message_data: The message data to send
+            max_retries: Maximum number of retry attempts
+
+        Returns:
+            The API response
+
+        Raises:
+            Exception: If all retries are exhausted or non-rate-limit error occurs
+        """
+        for attempt in range(max_retries + 1):
+            try:
+                response = self.zulip_client.send_message(message_data)
+
+                # Check if we hit a rate limit
+                if response.get("result") == "error" and response.get("code") == "RATE_LIMIT_HIT":
+                    retry_after = response.get("retry-after", 1.0)
+
+                    if attempt < max_retries:
+                        logger.warning(
+                            "Rate limit hit, retrying after delay",
+                            attempt=attempt + 1,
+                            max_retries=max_retries,
+                            retry_after=retry_after,
+                        )
+                        time.sleep(retry_after)
+                        continue
+                    else:
+                        logger.error(
+                            "Rate limit hit, max retries exhausted",
+                            max_retries=max_retries,
+                            response=response,
+                        )
+                        raise Exception(f"Rate limit exceeded after {max_retries} retries")
+
+                return cast(ZulipResponse, response)
+
+            except Exception as e:
+                if attempt < max_retries and "rate limit" in str(e).lower():
+                    logger.warning(
+                        "Exception during message send, retrying",
+                        attempt=attempt + 1,
+                        error=str(e),
+                    )
+                    time.sleep(2**attempt)  # Exponential backoff
+                    continue
+                else:
+                    raise
+
+        # This should never be reached, but just in case
+        raise Exception("Unexpected error in retry logic")
