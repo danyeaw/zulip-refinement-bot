@@ -36,7 +36,7 @@ def test_config(temp_db: Path) -> Config:
         zulip_site="https://test.zulipchat.com",
         database_path=temp_db,
         stream_name="test-stream",
-        voter_list=["voter1", "voter2", "voter3"],
+        voter_list_str="voter1, voter2, voter3",
     )
 
 

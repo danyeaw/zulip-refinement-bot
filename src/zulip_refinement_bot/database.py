@@ -7,7 +7,7 @@ from pathlib import Path
 
 import structlog
 
-from .models import BatchData, IssueData
+from .models import BatchData, EstimationVote, IssueData
 
 logger = structlog.get_logger(__name__)
 
@@ -37,6 +37,7 @@ class DatabaseManager:
                     deadline TEXT NOT NULL,
                     facilitator TEXT NOT NULL,
                     status TEXT DEFAULT 'active',
+                    message_id INTEGER,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -184,3 +185,106 @@ class DatabaseManager:
             conn.commit()
 
         logger.info("Batch completed", batch_id=batch_id)
+
+    def store_vote(self, batch_id: int, voter: str, issue_number: str, points: int) -> bool:
+        """Store a vote for an issue in a batch.
+
+        Args:
+            batch_id: ID of the batch
+            voter: Name of the voter
+            issue_number: Issue number being voted on
+            points: Story points estimate
+
+        Returns:
+            True if vote was stored successfully, False if it was a duplicate
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute(
+                    "INSERT INTO votes (batch_id, issue_number, voter, points) VALUES (?, ?, ?, ?)",
+                    (batch_id, issue_number, voter, points),
+                )
+                conn.commit()
+                logger.info(
+                    "Vote stored",
+                    batch_id=batch_id,
+                    voter=voter,
+                    issue_number=issue_number,
+                    points=points,
+                )
+                return True
+        except sqlite3.IntegrityError:
+            # Duplicate vote (voter already voted for this issue in this batch)
+            logger.warning(
+                "Duplicate vote attempt", batch_id=batch_id, voter=voter, issue_number=issue_number
+            )
+            return False
+
+    def get_batch_votes(self, batch_id: int) -> list[EstimationVote]:
+        """Get all votes for a batch.
+
+        Args:
+            batch_id: ID of the batch
+
+        Returns:
+            List of votes for the batch
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                "SELECT * FROM votes WHERE batch_id = ? ORDER BY created_at", (batch_id,)
+            )
+            return [
+                EstimationVote(
+                    voter=row["voter"],
+                    issue_number=row["issue_number"],
+                    points=row["points"],
+                    timestamp=row["created_at"],
+                )
+                for row in cursor.fetchall()
+            ]
+
+    def get_vote_count_by_voter(self, batch_id: int) -> int:
+        """Get the number of unique voters who have submitted votes for a batch.
+
+        Args:
+            batch_id: ID of the batch
+
+        Returns:
+            Number of unique voters
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                "SELECT COUNT(DISTINCT voter) FROM votes WHERE batch_id = ?", (batch_id,)
+            )
+            result = cursor.fetchone()
+            return result[0] if result else 0
+
+    def has_voter_voted(self, batch_id: int, voter: str) -> bool:
+        """Check if a voter has already submitted votes for a batch.
+
+        Args:
+            batch_id: ID of the batch
+            voter: Name of the voter
+
+        Returns:
+            True if the voter has already voted, False otherwise
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                "SELECT COUNT(*) FROM votes WHERE batch_id = ? AND voter = ?", (batch_id, voter)
+            )
+            result = cursor.fetchone()
+            return (result[0] if result else 0) > 0
+
+    def update_batch_message_id(self, batch_id: int, message_id: int) -> None:
+        """Update the message ID for a batch.
+
+        Args:
+            batch_id: ID of the batch
+            message_id: Zulip message ID of the batch refinement message
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("UPDATE batches SET message_id = ? WHERE id = ?", (message_id, batch_id))
+            conn.commit()
+        logger.info("Updated batch message ID", batch_id=batch_id, message_id=message_id)
