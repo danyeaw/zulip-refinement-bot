@@ -34,7 +34,7 @@ class MessageData(BaseModel):
     content: str = Field(..., description="Message content")
     sender_email: str = Field(..., description="Sender email")
     sender_full_name: str = Field(..., description="Sender full name")
-    sender_id: str = Field(..., description="Sender ID")
+    sender_id: int = Field(..., description="Sender ID")
 
 
 class ParseResult(BaseModel):

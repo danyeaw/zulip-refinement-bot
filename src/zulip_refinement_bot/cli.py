@@ -29,7 +29,9 @@ def setup_logging(log_level: str = "INFO", log_format: str = "json") -> None:
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR)
         log_format: Log format (json, console)
     """
-    level = getattr(structlog.stdlib, log_level.upper(), structlog.stdlib.INFO)
+    import logging
+
+    level = getattr(logging, log_level.upper(), logging.INFO)
 
     if log_format.lower() == "console":
         # Rich console logging for development
@@ -51,11 +53,8 @@ def setup_logging(log_level: str = "INFO", log_format: str = "json") -> None:
         )
 
         # Configure standard library logging
-        import logging
-
         logging.basicConfig(
             format="%(message)s",
-            stream=sys.stdout,
             level=level,
             handlers=[RichHandler(console=console, rich_tracebacks=True)],
         )

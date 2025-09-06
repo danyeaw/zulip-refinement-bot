@@ -5,56 +5,55 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from pydantic import Field
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Config(BaseSettings):
     """Configuration settings for the Zulip Refinement Bot."""
 
     # Zulip connection settings
-    zulip_email: str = Field(..., env="ZULIP_EMAIL")
-    zulip_api_key: str = Field(..., env="ZULIP_API_KEY")
-    zulip_site: str = Field(..., env="ZULIP_SITE")
+    zulip_email: str
+    zulip_api_key: str
+    zulip_site: str
 
     # Bot configuration
-    stream_name: str = Field(default="conda-maintainers", env="STREAM_NAME")
-    default_deadline_hours: int = Field(default=48, env="DEFAULT_DEADLINE_HOURS")
-    max_issues_per_batch: int = Field(default=6, env="MAX_ISSUES_PER_BATCH")
-    max_title_length: int = Field(default=50, env="MAX_TITLE_LENGTH")
+    stream_name: str = "conda-maintainers"
+    default_deadline_hours: int = 48
+    max_issues_per_batch: int = 6
+    max_title_length: int = 50
 
-    # Voter list
-    voter_list: list[str] = Field(
-        default=[
-            "jaimergp",
-            "Jannis Leidel",
-            "Sophia Castellarin",
-            "Daniel Holth",
-            "Ryan Keith",
-            "Mahe Iyer",
-            "Dan Yeaw",
-        ],
-        env="VOTER_LIST",
-    )
+    default_list = [
+        "jaimergp",
+        "Jannis Leidel",
+        "Sophia Castellarin",
+        "Daniel Holth",
+        "Ryan Keith",
+        "Mahe Iyer",
+        "Dan Yeaw",
+    ]
+    voter_list_str: str = ", ".join(default_list)
 
     # Database settings
-    database_path: Path = Field(
-        default_factory=lambda: Path.cwd() / "data" / "refinement.db",
-        env="DATABASE_PATH",
-    )
+    database_path: Path = Path.cwd() / "data" / "refinement.db"
 
     # GitHub API settings
-    github_timeout: float = Field(default=10.0, env="GITHUB_TIMEOUT")
+    github_timeout: float = 10.0
 
     # Logging
-    log_level: str = Field(default="INFO", env="LOG_LEVEL")
-    log_format: str = Field(default="json", env="LOG_FORMAT")
+    log_level: str = "INFO"
+    log_format: str = "json"
 
-    model_config = {
-        "env_file": ".env",
-        "env_file_encoding": "utf-8",
-        "case_sensitive": False,
-    }
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        env_prefix="",
+    )
+
+    @property
+    def voter_list(self) -> list[str]:
+        """Parse comma-separated voter list from environment variable."""
+        return [voter.strip() for voter in self.voter_list_str.split(",") if voter.strip()]
 
     def __init__(self, **kwargs: Any) -> None:
         """Initialize configuration and ensure database directory exists."""
