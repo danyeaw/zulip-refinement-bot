@@ -12,7 +12,7 @@ import zulip
 from .config import Config
 from .database import DatabaseManager
 from .github_api import GitHubAPI
-from .models import IssueData, MessageData
+from .models import BatchData, IssueData, MessageData
 from .parser import InputParser
 
 logger = structlog.get_logger(__name__)
@@ -428,9 +428,40 @@ Posting to #{self.config.stream_name} now..."""
 
         # Store all votes
         stored_count = 0
+        logger.info(
+            "Storing votes for batch",
+            batch_id=active_batch.id,
+            voter=voter_name,
+            vote_count=len(estimates),
+            estimates=estimates,
+        )
+
         for issue_number, points in estimates.items():
             if self.db_manager.store_vote(active_batch.id, voter_name, issue_number, points):
                 stored_count += 1
+                logger.debug(
+                    "Vote stored successfully",
+                    batch_id=active_batch.id,
+                    voter=voter_name,
+                    issue_number=issue_number,
+                    points=points,
+                )
+            else:
+                logger.warning(
+                    "Failed to store vote (likely duplicate)",
+                    batch_id=active_batch.id,
+                    voter=voter_name,
+                    issue_number=issue_number,
+                    points=points,
+                )
+
+        logger.info(
+            "Vote storage complete",
+            batch_id=active_batch.id,
+            voter=voter_name,
+            stored_count=stored_count,
+            expected_count=len(estimates),
+        )
 
         if stored_count == len(estimates):
             # All votes stored successfully
@@ -443,7 +474,7 @@ Posting to #{self.config.stream_name} now..."""
             )
 
             # Update the batch message with new vote count
-            self._update_batch_message(active_batch.id)
+            self._update_batch_message(active_batch.id, active_batch)
         else:
             self._send_reply(
                 message,
@@ -451,24 +482,35 @@ Posting to #{self.config.stream_name} now..."""
                 "Some votes may have been duplicates.",
             )
 
-    def _update_batch_message(self, batch_id: int) -> None:
+    def _update_batch_message(self, batch_id: int, active_batch: BatchData | None = None) -> None:
         """Update the batch refinement message with current vote count.
 
         Args:
             batch_id: ID of the batch to update
+            active_batch: Optional batch data to avoid re-fetching
         """
         try:
-            # Get current batch data
-            active_batch = self.db_manager.get_active_batch()
-            if not active_batch or active_batch.id != batch_id:
-                logger.warning(
-                    "Cannot update batch message: batch not found or not active", batch_id=batch_id
-                )
-                return
+            # Use provided batch data or fetch it
+            if active_batch is None:
+                active_batch = self.db_manager.get_active_batch()
+                if not active_batch or active_batch.id != batch_id:
+                    logger.warning(
+                        "Cannot update batch message: batch not found or not active",
+                        batch_id=batch_id,
+                    )
+                    return
 
             # Get vote count
             vote_count = self.db_manager.get_vote_count_by_voter(batch_id)
             total_voters = len(self.config.voter_list)
+
+            logger.info(
+                "Updating batch message",
+                batch_id=batch_id,
+                vote_count=vote_count,
+                total_voters=total_voters,
+                message_id=active_batch.message_id,
+            )
 
             # Reconstruct the batch message with updated vote count
             deadline = datetime.fromisoformat(active_batch.deadline)
@@ -507,6 +549,12 @@ Posting to #{self.config.stream_name} now..."""
             # Update the message in the stream if we have the message ID
             if active_batch.message_id:
                 try:
+                    logger.debug(
+                        "Attempting to update message",
+                        message_id=active_batch.message_id,
+                        content_length=len(topic_content),
+                    )
+
                     edit_response = self.zulip_client.update_message(
                         {
                             "message_id": active_batch.message_id,
@@ -523,22 +571,29 @@ Posting to #{self.config.stream_name} now..."""
                             total_voters=total_voters,
                         )
                     else:
-                        logger.warning(
-                            "Failed to update batch message",
+                        logger.error(
+                            "Failed to update batch message - API returned error",
                             batch_id=batch_id,
                             message_id=active_batch.message_id,
                             response=edit_response,
+                            error_code=edit_response.get("code"),
+                            error_msg=edit_response.get("msg"),
                         )
                 except Exception as edit_error:
                     logger.error(
-                        "Error updating batch message",
+                        "Exception while updating batch message",
                         batch_id=batch_id,
                         message_id=active_batch.message_id,
                         error=str(edit_error),
+                        error_type=type(edit_error).__name__,
                     )
             else:
-                logger.warning(
-                    "Cannot update batch message: no message ID stored", batch_id=batch_id
+                logger.error(
+                    "Cannot update batch message: no message ID stored",
+                    batch_id=batch_id,
+                    batch_data=active_batch.dict()
+                    if hasattr(active_batch, "dict")
+                    else str(active_batch),
                 )
 
         except Exception as e:

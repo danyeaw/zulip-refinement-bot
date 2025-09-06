@@ -254,11 +254,26 @@ class DatabaseManager:
             Number of unique voters
         """
         with sqlite3.connect(self.db_path) as conn:
+            # First get the actual voter names for debugging
+            debug_cursor = conn.execute(
+                "SELECT DISTINCT voter FROM votes WHERE batch_id = ?", (batch_id,)
+            )
+            voters = [row[0] for row in debug_cursor.fetchall()]
+
             cursor = conn.execute(
                 "SELECT COUNT(DISTINCT voter) FROM votes WHERE batch_id = ?", (batch_id,)
             )
             result = cursor.fetchone()
-            return result[0] if result else 0
+            count = result[0] if result else 0
+
+            logger.debug(
+                "Vote count query result",
+                batch_id=batch_id,
+                unique_voters=voters,
+                vote_count=count,
+            )
+
+            return count
 
     def has_voter_voted(self, batch_id: int, voter: str) -> bool:
         """Check if a voter has already submitted votes for a batch.
