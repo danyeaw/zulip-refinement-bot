@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  zulip-refinement-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: zulip-refinement-bot
+    restart: unless-stopped
+    
+    # Environment variables (override in .env file)
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+      - DATABASE_PATH=/app/data/refinement.db
+      - ZULIP_EMAIL=${ZULIP_EMAIL}
+      - ZULIP_API_KEY=${ZULIP_API_KEY}
+      - ZULIP_SITE=${ZULIP_SITE}
+      - STREAM_NAME=${STREAM_NAME:-conda-maintainers}
+      - DEFAULT_DEADLINE_HOURS=${DEFAULT_DEADLINE_HOURS:-48}
+      - MAX_ISSUES_PER_BATCH=${MAX_ISSUES_PER_BATCH:-6}
+      - MAX_TITLE_LENGTH=${MAX_TITLE_LENGTH:-50}
+      - GITHUB_TIMEOUT=${GITHUB_TIMEOUT:-10.0}
+    
+    # Persistent volume for database
+    volumes:
+      - bot_data:/app/data
+      - ./logs:/app/logs  # Optional: mount logs directory
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "conda", "run", "-n", "zulip-refinement-bot", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    # Network configuration
+    networks:
+      - bot_network
+
+  # Optional: Add a monitoring service
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: zulip-bot-watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_POLL_INTERVAL=3600  # Check for updates every hour
+      - WATCHTOWER_INCLUDE_STOPPED=true
+    networks:
+      - bot_network
+    profiles:
+      - monitoring
+
+volumes:
+  bot_data:
+    driver: local
+
+networks:
+  bot_network:
+    driver: bridge

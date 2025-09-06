@@ -1,0 +1,24 @@
+name: zulip-refinement-bot
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - httpx>=0.24.0
+  - sqlite
+  - pytest>=7.0
+  - pytest-cov
+  - pytest-asyncio
+  - black
+  - isort
+  - flake8
+  - mypy
+  - pre-commit
+  - pip:
+    - zulip>=0.8.0
+    - python-dotenv>=1.0.0
+    - pydantic>=2.0.0
+    - structlog>=23.0.0
+    - rich>=13.0.0
+    - typer>=0.9.0
