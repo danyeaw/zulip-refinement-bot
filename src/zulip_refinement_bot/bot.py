@@ -85,7 +85,7 @@ class RefinementBot:
         • {self.config.default_deadline_hours}-hour default deadline
         • Valid story points: 1, 2, 3, 5, 8, 13, 21
         • Must vote for all issues in the batch
-        • One vote per voter per batch
+        • Can update votes by submitting new estimates (replaces previous votes)
         """
 
     def handle_message(self, message: dict[str, Any]) -> None:
@@ -389,13 +389,7 @@ Posting to #{self.config.stream_name} now..."""
             self._send_reply(message, "❌ No active batch found. Cannot submit votes.")
             return
 
-        # Check if voter has already voted
-        if self.db_manager.has_voter_voted(active_batch.id, voter_name):
-            self._send_reply(
-                message,
-                "❌ You have already submitted votes for this batch. Each voter can only vote once per batch.",
-            )
-            return
+        # Note: We now allow vote updates, so we don't check if voter has already voted
 
         # Parse the votes
         estimates = self.parser.parse_estimation_input(content)
@@ -426,10 +420,13 @@ Posting to #{self.config.stream_name} now..."""
             self._send_reply(message, error_msg)
             return
 
-        # Store all votes
+        # Store all votes (with update capability)
         stored_count = 0
+        updated_count = 0
+        new_count = 0
+
         logger.info(
-            "Storing votes for batch",
+            "Storing/updating votes for batch",
             batch_id=active_batch.id,
             voter=voter_name,
             vote_count=len(estimates),
@@ -437,18 +434,26 @@ Posting to #{self.config.stream_name} now..."""
         )
 
         for issue_number, points in estimates.items():
-            if self.db_manager.store_vote(active_batch.id, voter_name, issue_number, points):
+            success, was_update = self.db_manager.upsert_vote(
+                active_batch.id, voter_name, issue_number, points
+            )
+            if success:
                 stored_count += 1
+                if was_update:
+                    updated_count += 1
+                else:
+                    new_count += 1
                 logger.debug(
-                    "Vote stored successfully",
+                    "Vote processed successfully",
                     batch_id=active_batch.id,
                     voter=voter_name,
                     issue_number=issue_number,
                     points=points,
+                    was_update=was_update,
                 )
             else:
-                logger.warning(
-                    "Failed to store vote (likely duplicate)",
+                logger.error(
+                    "Failed to store/update vote",
                     batch_id=active_batch.id,
                     voter=voter_name,
                     issue_number=issue_number,
@@ -456,30 +461,44 @@ Posting to #{self.config.stream_name} now..."""
                 )
 
         logger.info(
-            "Vote storage complete",
+            "Vote processing complete",
             batch_id=active_batch.id,
             voter=voter_name,
             stored_count=stored_count,
             expected_count=len(estimates),
+            new_votes=new_count,
+            updated_votes=updated_count,
         )
 
         if stored_count == len(estimates):
-            # All votes stored successfully
+            # All votes stored/updated successfully
             vote_summary = ", ".join([f"#{issue}: {points}" for issue, points in estimates.items()])
+
+            # Create appropriate success message
+            if updated_count > 0 and new_count > 0:
+                action_msg = (
+                    f"**Votes processed successfully!** ({new_count} new, {updated_count} updated)"
+                )
+            elif updated_count > 0:
+                action_msg = f"**Votes updated successfully!** ({updated_count} vote{'s' if updated_count != 1 else ''} updated)"
+            else:
+                action_msg = f"**Votes recorded successfully!** ({new_count} new vote{'s' if new_count != 1 else ''})"
+
             self._send_reply(
                 message,
-                f"✅ **Votes recorded successfully!**\n\n"
+                f"✅ {action_msg}\n\n"
                 f"Your estimates: {vote_summary}\n\n"
                 f"Thank you for participating in the refinement process.",
             )
 
-            # Update the batch message with new vote count
-            self._update_batch_message(active_batch.id, active_batch)
+            # Update the batch message with current vote count (only if there were new voters)
+            if new_count > 0:
+                self._update_batch_message(active_batch.id, active_batch)
         else:
             self._send_reply(
                 message,
-                f"⚠️ Only {stored_count} out of {len(estimates)} votes were stored. "
-                "Some votes may have been duplicates.",
+                f"⚠️ Only {stored_count} out of {len(estimates)} votes were processed successfully. "
+                "Please try again or contact the facilitator.",
             )
 
     def _update_batch_message(self, batch_id: int, active_batch: BatchData | None = None) -> None:

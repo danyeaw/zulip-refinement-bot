@@ -220,6 +220,64 @@ class DatabaseManager:
             )
             return False
 
+    def upsert_vote(
+        self, batch_id: int, voter: str, issue_number: str, points: int
+    ) -> tuple[bool, bool]:
+        """Store or update a vote for an issue in a batch.
+
+        Args:
+            batch_id: ID of the batch
+            voter: Name of the voter
+            issue_number: Issue number being voted on
+            points: Story points estimate
+
+        Returns:
+            Tuple of (success: bool, was_update: bool)
+            - success: True if vote was stored/updated successfully
+            - was_update: True if this was an update, False if it was a new vote
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            # Check if vote already exists
+            cursor = conn.execute(
+                "SELECT points FROM votes WHERE batch_id = ? AND issue_number = ? AND voter = ?",
+                (batch_id, issue_number, voter),
+            )
+            existing_vote = cursor.fetchone()
+
+            if existing_vote:
+                # Update existing vote
+                old_points = existing_vote[0]
+                conn.execute(
+                    """UPDATE votes SET points = ?, created_at = CURRENT_TIMESTAMP
+                       WHERE batch_id = ? AND issue_number = ? AND voter = ?""",
+                    (points, batch_id, issue_number, voter),
+                )
+                conn.commit()
+                logger.info(
+                    "Vote updated",
+                    batch_id=batch_id,
+                    voter=voter,
+                    issue_number=issue_number,
+                    old_points=old_points,
+                    new_points=points,
+                )
+                return True, True
+            else:
+                # Insert new vote
+                conn.execute(
+                    "INSERT INTO votes (batch_id, issue_number, voter, points) VALUES (?, ?, ?, ?)",
+                    (batch_id, issue_number, voter, points),
+                )
+                conn.commit()
+                logger.info(
+                    "New vote stored",
+                    batch_id=batch_id,
+                    voter=voter,
+                    issue_number=issue_number,
+                    points=points,
+                )
+                return True, False
+
     def get_batch_votes(self, batch_id: int) -> list[EstimationVote]:
         """Get all votes for a batch.
 
