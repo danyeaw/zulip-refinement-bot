@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -22,7 +22,7 @@ class Config(BaseSettings):
     max_issues_per_batch: int = 6
     max_title_length: int = 50
 
-    default_list = [
+    default_list: ClassVar[list[str]] = [
         "jaimergp",
         "Jannis Leidel",
         "Sophia Castellarin",

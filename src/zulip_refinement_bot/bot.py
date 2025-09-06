@@ -250,8 +250,9 @@ Posting to #{self.config.stream_name} now..."""
         """
         issue_list = "\n".join(
             [
-                f"• #{issue.issue_number} - {issue.title}"
-                + (f" ([GitHub]({issue.url}))" if issue.url else "")
+                f"• #{issue.issue_number} - " + f"[{issue.title}]({issue.url})"
+                if issue.url
+                else f"{issue.title}"
                 for issue in issues
             ]
         )
@@ -262,14 +263,14 @@ Posting to #{self.config.stream_name} now..."""
 **Stories**:
 {issue_list}
 
-**Deadline**: {deadline.strftime("%Y-%m-%d %H:%M UTC")} ({self.config.default_deadline_hours} hours from now)  # noqa: E501
+**Deadline**: {deadline.strftime("%Y-%m-%d %H:%M UTC")} ({self.config.default_deadline_hours} hours from now)
 **Facilitator**: @**{facilitator}**
 
 **How to estimate**:
-1. Review issues in GitHub (check #{self.config.stream_name} for links if needed)
+1. Review issues in GitHub
 2. Consider complexity, unknowns, dependencies for each
-3. DM me your story point estimates in this format:
-   `#{issues[0].issue_number}: 5, #{issues[1].issue_number if len(issues) > 1 else issues[0].issue_number}: 8, #{issues[2].issue_number if len(issues) > 2 else issues[0].issue_number}: 3`  # noqa: E501
+3. DM @**Refinement Bot** your story point estimates in this format:
+   `#{issues[0].issue_number}: 5, #{issues[1].issue_number if len(issues) > 1 else issues[0].issue_number}: 8, #{issues[2].issue_number if len(issues) > 2 else issues[0].issue_number}: 3`
 4. Use scale: 1, 2, 3, 5, 8, 13, 21
 
 **Voters needed**: {voter_mentions}
