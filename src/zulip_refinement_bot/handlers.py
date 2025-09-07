@@ -418,7 +418,7 @@ class MessageHandler(MessageHandlerInterface):
             logger.error("Error removing voter(s)", error=str(e))
             self._send_reply(message, "❌ Error removing voter(s). Please try again.")
 
-    def handle_discussion_complete(self, message: dict[str, Any], content: str) -> None:
+    def handle_finish(self, message: dict[str, Any], content: str) -> None:
         """Handle discussion complete command with final estimates.
 
         Expected format: discussion complete #issue1: points rationale, #issue2: points rationale
@@ -439,13 +439,13 @@ class MessageHandler(MessageHandlerInterface):
             requester = message["sender_full_name"]
 
             # Parse the final estimates from the content
-            final_estimates = self._parse_discussion_complete_input(content)
+            final_estimates = self._parse_finish_input(content)
 
             if not final_estimates:
                 self._send_reply(
                     message,
                     "❌ No valid final estimates found. Please use format:\n"
-                    "`discussion complete #1234: 5 rationale here, #1235: 8 another rationale`",
+                    "`finish #1234: 5 rationale here, #1235: 8 another rationale`",
                 )
                 return
 
@@ -455,7 +455,7 @@ class MessageHandler(MessageHandlerInterface):
             )
 
             # Generate and post final results
-            self._post_discussion_complete_results(completed_batch, final_estimates)
+            self._post_finish_results(completed_batch, final_estimates)
 
             self._send_reply(
                 message,
@@ -468,19 +468,19 @@ class MessageHandler(MessageHandlerInterface):
             logger.error("Error handling discussion complete", error=str(e))
             self._send_reply(message, "❌ Error completing discussion. Please try again.")
 
-    def _parse_discussion_complete_input(self, content: str) -> dict[str, tuple[int, str]]:
-        """Parse discussion complete input into final estimates.
+    def _parse_finish_input(self, content: str) -> dict[str, tuple[int, str]]:
+        """Parse finish command input into final estimates.
 
         Args:
-            content: Input like "discussion complete #1234: 5 rationale, #1235: 8 rationale"
+            content: Input like "finish #1234: 5 rationale, #1235: 8 rationale"
 
         Returns:
             Dict of issue_number -> (points, rationale)
         """
         import re
 
-        # Remove the "discussion complete" prefix
-        content = content.replace("discussion complete", "").strip()
+        # Remove the "finish" prefix
+        content = content.replace("finish", "").strip()
 
         # Pattern to match #issue: points rationale
         pattern = r"#(\d+):\s*(\d+)\s*([^,#]*?)(?=,\s*#|\s*$)"
@@ -1010,7 +1010,7 @@ Posting to #{self.config.stream_name} now..."""
         except Exception as e:
             logger.error("Error updating batch discussion status", batch_id=batch.id, error=str(e))
 
-    def _post_discussion_complete_results(
+    def _post_finish_results(
         self, batch: BatchData, final_estimates_input: dict[str, tuple[int, str]]
     ) -> None:
         """Post final results after discussion is complete.
@@ -1037,7 +1037,7 @@ Posting to #{self.config.stream_name} now..."""
             ]
 
             # Generate final results content
-            results_content = self.results_service.generate_discussion_complete_results(
+            results_content = self.results_service.generate_finish_results(
                 batch, consensus_estimates, final_estimates
             )
 

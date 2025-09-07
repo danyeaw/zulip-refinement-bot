@@ -55,7 +55,7 @@ class RefinementBot:
 • `list` - Show voters for active batch
 • `add Name` - Add voter(s) to active batch (supports multiple formats)
 • `remove Name` - Remove voter(s) from active batch (supports multiple formats)
-• `discussion complete #issue: points rationale` - Complete discussion phase (facilitator only)
+• `finish #issue: points rationale` - Complete discussion phase (facilitator only)
 
 **Batch format (GitHub URLs only):**
 Send `start` followed by GitHub issue URLs, one per line:
@@ -85,7 +85,7 @@ remove Alice and Bob
 **Discussion phase:**
 When consensus isn't reached, complete discussion with:
 ```
-discussion complete #15169: 5 After discussion we agreed it's medium complexity, #15168: 3 Simple bug fix confirmed
+finish #15169: 5 After discussion we agreed it's medium complexity, #15168: 3 Simple bug fix confirmed
 ```
 
 **Rules:**
@@ -154,8 +154,8 @@ discussion complete #15169: 5 After discussion we agreed it's medium complexity,
                 self.message_handler.handle_add_voter(message, content)
             elif content.lower().startswith("remove "):
                 self.message_handler.handle_remove_voter(message, content)
-            elif content.lower().startswith("discussion complete"):
-                self.message_handler.handle_discussion_complete(message, content)
+            elif content.lower().startswith("finish"):
+                self.message_handler.handle_finish(message, content)
             else:
                 # Check if it's a vote format
                 if self.message_handler.is_vote_format(content):

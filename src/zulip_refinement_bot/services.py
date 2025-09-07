@@ -546,13 +546,13 @@ class ResultsService:
                 "**🗣️ NEXT STEPS**\n"
                 "Discussion phase for the disputed stories. Once discussion is complete, "
                 "the facilitator should use the command:\n"
-                "`discussion complete #issue1: points rationale, #issue2: points rationale`\n\n"
-                "Example: `discussion complete #15116: 5 After discussion we agreed it's medium complexity, #15907: 3 Simple bug fix confirmed`\n"
+                "`finish #issue1: points rationale, #issue2: points rationale`\n\n"
+                "Example: `finish #15116: 5 After discussion we agreed it's medium complexity, #15907: 3 Simple bug fix confirmed`\n"
             )
 
         return results_content
 
-    def generate_discussion_complete_results(
+    def generate_finish_results(
         self,
         batch: BatchData,
         consensus_estimates: dict[str, int],

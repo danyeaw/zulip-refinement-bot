@@ -163,7 +163,7 @@ pytest --cov=src/zulip_refinement_bot --cov-report=html
 
 # Run specific test categories
 pytest tests/test_multi_voter.py          # Multi-voter functionality
-pytest tests/test_discussion_complete.py  # Discussion complete feature
+pytest tests/test_discussion_complete.py  # Finish feature
 pytest tests/test_voting_service.py       # Voting logic
 ```
 
