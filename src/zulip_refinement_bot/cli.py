@@ -178,9 +178,6 @@ DEFAULT_DEADLINE_HOURS=48
 MAX_ISSUES_PER_BATCH=6
 MAX_TITLE_LENGTH=50
 
-# Voter list (comma-separated)
-VOTER_LIST=jaimergp,Jannis Leidel,Sophia Castellarin,Daniel Holth,Ryan Keith,Mahe Iyer,Dan Yeaw
-
 # Database settings (optional)
 DATABASE_PATH=./data/refinement.db
 

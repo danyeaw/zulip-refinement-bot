@@ -37,6 +37,7 @@ class TestBatchService:
         )
         mock_database.create_batch.return_value = 1
         mock_database.add_issues_to_batch.return_value = None
+        mock_database.add_batch_voters.return_value = None
 
         # Create service
         service = BatchService(test_config, mock_database, mock_github_api, mock_parser)
@@ -52,6 +53,9 @@ class TestBatchService:
         assert issues[0].issue_number == "1234"
         mock_database.create_batch.assert_called_once()
         mock_database.add_issues_to_batch.assert_called_once()
+        from zulip_refinement_bot.config import Config
+
+        mock_database.add_batch_voters.assert_called_once_with(1, Config._default_voters)
 
     def test_create_batch_with_active_batch_fails(self, test_config: Config) -> None:
         """Test batch creation fails when there's already an active batch."""
@@ -100,23 +104,38 @@ class TestBatchService:
 class TestVotingService:
     """Tests for VotingService."""
 
-    def test_submit_votes_unauthorized(self, test_config: Config) -> None:
-        """Test vote submission fails for unauthorized voter."""
+    def test_submit_votes_auto_adds_new_voter(self, test_config: Config) -> None:
+        """Test vote submission automatically adds new voters to batch."""
         # Mock dependencies
         mock_database = MagicMock()
         mock_parser = MagicMock()
 
+        # Setup mocks
+        mock_database.get_batch_voters.return_value = ["voter1", "voter2"]  # Original voters
+        mock_database.add_voter_to_batch.return_value = True  # Successfully added
+        mock_database.get_vote_count_by_voter.return_value = 1
+        mock_parser.parse_estimation_input.return_value = ({"1234": 5}, [])
+        mock_database.upsert_vote.return_value = (True, False)
+
         # Create service
         service = VotingService(test_config, mock_database, mock_parser)
 
-        # Create batch
+        # Create batch with matching issue
         batch = BatchData(
-            id=1, date="2024-01-01", deadline="2024-01-02T00:00:00", facilitator="facilitator"
+            id=1,
+            date="2024-01-01",
+            deadline="2024-01-02T00:00:00",
+            facilitator="facilitator",
+            issues=[IssueData(issue_number="1234", title="Test Issue", url="")],
         )
 
-        # Test vote submission fails for unauthorized voter
-        with pytest.raises(AuthorizationError, match="not authorized to vote"):
-            service.submit_votes("#1234: 5", "unauthorized_voter", batch)
+        # Test vote submission succeeds and adds new voter
+        estimates, has_updates, all_complete = service.submit_votes("#1234: 5", "new_voter", batch)
+
+        # Verify voter was added
+        mock_database.add_voter_to_batch.assert_called_once_with(1, "new_voter")
+        assert estimates == {"1234": 5}
+        assert has_updates is True
 
     def test_submit_votes_success(self, test_config: Config) -> None:
         """Test successful vote submission."""
@@ -125,6 +144,11 @@ class TestVotingService:
         mock_parser = MagicMock()
 
         # Setup mocks
+        mock_database.get_batch_voters.return_value = [
+            "voter1",
+            "voter2",
+            "voter3",
+        ]  # voter1 is authorized
         mock_parser.parse_estimation_input.return_value = ({"1234": 5}, [])
         mock_database.upsert_vote.return_value = (True, False)
         mock_database.get_vote_count_by_voter.return_value = 1
@@ -146,7 +170,7 @@ class TestVotingService:
 
         # Assertions
         assert estimates == {"1234": 5}
-        assert not has_updates  # No updates since it was a new vote
+        assert has_updates  # Should be True since votes were stored
         assert not all_complete  # Only 1 out of 3 voters
         mock_database.upsert_vote.assert_called_once_with(1, "voter1", "1234", 5)
 

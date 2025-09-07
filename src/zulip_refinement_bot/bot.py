@@ -53,6 +53,9 @@ class RefinementBot:
         • `status` - Show active batch info
         • `cancel` - Cancel active batch (facilitator only)
         • `complete` - Complete active batch and show results (facilitator only)
+        • `list voters` - Show voters for active batch
+        • `add voter Name` - Add voter to active batch (supports @**username** format)
+        • `remove voter Name` - Remove voter from active batch (supports @**username** format)
 
         **Batch format (GitHub URLs only):**
         ```
@@ -127,6 +130,12 @@ class RefinementBot:
                 self.message_handler.handle_cancel(message)
             elif content.lower() == "complete":
                 self.message_handler.handle_complete(message)
+            elif content.lower() == "list voters":
+                self.message_handler.handle_list_voters(message)
+            elif content.lower().startswith("add voter"):
+                self.message_handler.handle_add_voter(message, content)
+            elif content.lower().startswith("remove voter"):
+                self.message_handler.handle_remove_voter(message, content)
             else:
                 # Check if it's a vote format
                 if self.message_handler.is_vote_format(content):

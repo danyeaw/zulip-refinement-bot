@@ -28,16 +28,15 @@ class Config(BaseSettings):
     custom_holidays: str = ""
 
     _default_voters: ClassVar[list[str]] = [
-        "jaimergp",
-        "Jannis Leidel",
-        "Sophia Castellarin",
-        "Daniel Holth",
-        "Ryan Keith",
-        "Mahe Iyer",
         "Dan Yeaw",
+        "Daniel Holth",
+        "Jannis Leidel",
+        "Mahe Iyer",
+        "Ryan Keith",
+        "Sophia Castellarin",
+        "Travis Hathaway",
+        "jaimergp",
     ]
-
-    voter_list_str: str = Field(default_factory=lambda: ",".join(Config._default_voters))
 
     # Database settings
     database_path: Path = Field(default_factory=lambda: Path.cwd() / "data" / "refinement.db")
@@ -54,11 +53,6 @@ class Config(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
     )
-
-    @computed_field  # type: ignore[misc]
-    def voter_list(self) -> list[str]:
-        """Parse comma-separated voter list from environment variable."""
-        return [voter.strip() for voter in self.voter_list_str.split(",") if voter.strip()]
 
     @computed_field  # type: ignore[misc]
     def custom_holiday_dates(self) -> list[str]:

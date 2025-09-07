@@ -123,6 +123,17 @@ class DatabasePool(DatabaseInterface):
                 )
             """)
 
+            # Create batch_voters table
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS batch_voters (
+                    id INTEGER PRIMARY KEY,
+                    batch_id INTEGER NOT NULL,
+                    voter_name TEXT NOT NULL,
+                    FOREIGN KEY (batch_id) REFERENCES batches (id),
+                    UNIQUE(batch_id, voter_name)
+                )
+            """)
+
             # Migration: Add message_id column if it doesn't exist
             try:
                 conn.execute("ALTER TABLE batches ADD COLUMN message_id INTEGER")
@@ -136,6 +147,39 @@ class DatabasePool(DatabaseInterface):
                     raise
 
             conn.commit()
+
+        self._migrate_existing_batches()
+
+    def _migrate_existing_batches(self) -> None:
+        """Migrate existing batches to have default voters if they don't have any."""
+        try:
+            with self._get_connection() as conn:
+                # Find batches without voters
+                cursor = conn.execute("""
+                    SELECT b.id FROM batches b
+                    LEFT JOIN batch_voters bv ON b.id = bv.batch_id
+                    WHERE bv.batch_id IS NULL
+                """)
+                batches_without_voters = [row[0] for row in cursor.fetchall()]
+
+                if batches_without_voters:
+                    from .config import Config
+
+                    default_voters = Config._default_voters
+
+                    for batch_id in batches_without_voters:
+                        conn.executemany(
+                            "INSERT INTO batch_voters (batch_id, voter_name) VALUES (?, ?)",
+                            [(batch_id, voter) for voter in default_voters],
+                        )
+
+                    conn.commit()
+                    logger.info(
+                        "Migrated existing batches to have default voters",
+                        batch_count=len(batches_without_voters),
+                    )
+        except Exception as e:
+            logger.warning("Failed to migrate existing batches", error=str(e))
 
     def get_active_batch(self) -> BatchData | None:
         """Get the currently active batch if one exists.
@@ -365,6 +409,90 @@ class DatabasePool(DatabaseInterface):
                 message_id=message_id,
                 error=str(e),
             )
+
+    def add_batch_voters(self, batch_id: int, voters: list[str]) -> None:
+        """Add voters to a batch.
+
+        Args:
+            batch_id: ID of the batch
+            voters: List of voter names
+        """
+        with self._get_connection() as conn:
+            conn.executemany(
+                "INSERT INTO batch_voters (batch_id, voter_name) VALUES (?, ?)",
+                [(batch_id, voter) for voter in voters],
+            )
+            conn.commit()
+
+        logger.info("Voters added to batch", batch_id=batch_id, voter_count=len(voters))
+
+    def get_batch_voters(self, batch_id: int) -> list[str]:
+        """Get all voters for a batch.
+
+        Args:
+            batch_id: ID of the batch
+
+        Returns:
+            List of voter names for the batch
+        """
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT voter_name FROM batch_voters WHERE batch_id = ? ORDER BY voter_name",
+                (batch_id,),
+            )
+            voters = [row[0] for row in cursor.fetchall()]
+
+        logger.debug("Retrieved batch voters", batch_id=batch_id, voters=voters)
+        return voters
+
+    def add_voter_to_batch(self, batch_id: int, voter: str) -> bool:
+        """Add a single voter to a batch if they're not already added.
+
+        Args:
+            batch_id: ID of the batch
+            voter: Name of the voter to add
+
+        Returns:
+            True if voter was added, False if they were already in the batch
+        """
+        try:
+            with self._get_connection() as conn:
+                conn.execute(
+                    "INSERT INTO batch_voters (batch_id, voter_name) VALUES (?, ?)",
+                    (batch_id, voter),
+                )
+                conn.commit()
+                logger.info("Added new voter to batch", batch_id=batch_id, voter=voter)
+                return True
+        except sqlite3.IntegrityError:
+            # Voter already exists in batch (UNIQUE constraint violation)
+            logger.debug("Voter already exists in batch", batch_id=batch_id, voter=voter)
+            return False
+
+    def remove_voter_from_batch(self, batch_id: int, voter: str) -> bool:
+        """Remove a voter from a batch.
+
+        Args:
+            batch_id: ID of the batch
+            voter: Name of the voter to remove
+
+        Returns:
+            True if voter was removed, False if they weren't in the batch
+        """
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                "DELETE FROM batch_voters WHERE batch_id = ? AND voter_name = ?",
+                (batch_id, voter),
+            )
+            rows_affected = cursor.rowcount
+            conn.commit()
+
+            if rows_affected > 0:
+                logger.info("Removed voter from batch", batch_id=batch_id, voter=voter)
+                return True
+            else:
+                logger.debug("Voter not found in batch", batch_id=batch_id, voter=voter)
+                return False
 
     def close(self) -> None:
         """Close all connections in the pool."""

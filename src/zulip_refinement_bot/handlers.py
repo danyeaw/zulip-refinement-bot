@@ -205,6 +205,118 @@ class MessageHandler(MessageHandlerInterface):
             logger.error("Error handling vote submission", error=str(e))
             self._send_reply(message, "❌ Error processing votes. Please try again.")
 
+    def _parse_voter_name(self, text: str) -> str:
+        """Parse voter name from text, handling Zulip mention format.
+
+        Args:
+            text: Raw text that may contain @**username** format
+
+        Returns:
+            Clean username without Zulip mention formatting
+        """
+        # Strip whitespace first
+        text = text.strip()
+
+        # Handle Zulip mention format: @**username**
+        if text.startswith("@**") and text.endswith("**"):
+            return text[3:-2]  # Remove @** and **
+
+        # Return as-is for plain text names
+        return text
+
+    def handle_list_voters(self, message: dict[str, Any]) -> None:
+        """Handle list voters command."""
+        try:
+            active_batch = self.batch_service.get_active_batch()
+            if not active_batch or not active_batch.id:
+                self._send_reply(message, "❌ No active batch found.")
+                return
+
+            voters = self.batch_service.database.get_batch_voters(active_batch.id)
+
+            if not voters:
+                self._send_reply(message, f"📋 No voters found for batch {active_batch.id}")
+                return
+
+            voter_list = "\n".join([f"• {voter}" for voter in voters])
+            response = f"""📋 **Voters for Active Batch {active_batch.id}**
+
+{voter_list}
+
+**Total**: {len(voters)} voters"""
+
+            self._send_reply(message, response)
+
+        except Exception as e:
+            logger.error("Error listing voters", error=str(e))
+            self._send_reply(message, "❌ Error listing voters. Please try again.")
+
+    def handle_add_voter(self, message: dict[str, Any], content: str) -> None:
+        """Handle add voter command."""
+        try:
+            parts = content.split(maxsplit=2)
+            if len(parts) < 3:
+                self._send_reply(
+                    message,
+                    "❌ Please specify voter name. Format: `add voter John Doe` or `add voter @**username**`",
+                )
+                return
+
+            voter_name = self._parse_voter_name(parts[2])
+
+            active_batch = self.batch_service.get_active_batch()
+            if not active_batch or not active_batch.id:
+                self._send_reply(message, "❌ No active batch found.")
+                return
+
+            was_added = self.batch_service.database.add_voter_to_batch(active_batch.id, voter_name)
+
+            if was_added:
+                self._send_reply(message, f"✅ Added **{voter_name}** to batch {active_batch.id}")
+                self._update_batch_message(active_batch.id, active_batch)
+            else:
+                self._send_reply(
+                    message, f"ℹ️ **{voter_name}** was already in batch {active_batch.id}"
+                )
+
+        except Exception as e:
+            logger.error("Error adding voter", error=str(e))
+            self._send_reply(message, "❌ Error adding voter. Please try again.")
+
+    def handle_remove_voter(self, message: dict[str, Any], content: str) -> None:
+        """Handle remove voter command."""
+        try:
+            parts = content.split(maxsplit=2)
+            if len(parts) < 3:
+                self._send_reply(
+                    message,
+                    "❌ Please specify voter name. Format: `remove voter John Doe` or `remove voter @**username**`",
+                )
+                return
+
+            voter_name = self._parse_voter_name(parts[2])
+
+            active_batch = self.batch_service.get_active_batch()
+            if not active_batch or not active_batch.id:
+                self._send_reply(message, "❌ No active batch found.")
+                return
+
+            was_removed = self.batch_service.database.remove_voter_from_batch(
+                active_batch.id, voter_name
+            )
+
+            if was_removed:
+                self._send_reply(
+                    message, f"✅ Removed **{voter_name}** from batch {active_batch.id}"
+                )
+                self._update_batch_message(active_batch.id, active_batch)
+            else:
+                self._send_reply(message, f"ℹ️ **{voter_name}** was not in batch {active_batch.id}")
+
+        except Exception as e:
+            logger.error("Error removing voter", error=str(e))
+            self._send_reply(message, "❌ Error removing voter. Please try again.")
+
     def is_vote_format(self, content: str) -> bool:
         """Check if content looks like a vote submission.
 
@@ -299,7 +411,8 @@ Posting to #{self.config.stream_name} now..."""
             ]
         )
 
-        voter_mentions = ", ".join([f"@**{voter}**" for voter in self.config.voter_list])
+        batch_voters = self.batch_service.database.get_batch_voters(batch_id)
+        voter_mentions = ", ".join([f"@**{voter}**" for voter in batch_voters])
 
         fibonacci_numbers = [1, 2, 3, 5, 8, 13, 21]
         example_parts = []
@@ -327,7 +440,7 @@ Posting to #{self.config.stream_name} now..."""
 
 **Voters needed**: {voter_mentions}
 
-**Status**: ⏳ Collecting estimates (0/{len(self.config.voter_list)} received)
+**Status**: ⏳ Collecting estimates (0/{len(batch_voters)} received)
 
 *Will reveal results here once all votes are in*"""
 
@@ -390,7 +503,8 @@ Posting to #{self.config.stream_name} now..."""
                 ]
             )
 
-            voter_mentions = ", ".join([f"@**{voter}**" for voter in self.config.voter_list])
+            batch_voters = self.batch_service.database.get_batch_voters(batch_id)
+            voter_mentions = ", ".join([f"@**{voter}**" for voter in batch_voters])
 
             # Create example format string
             example_issues = [
@@ -598,9 +712,11 @@ Posting to #{self.config.stream_name} now..."""
             total_voters: Total number of expected voters
         """
         try:
-            # Generate results content
+            batch_voters = (
+                self.batch_service.database.get_batch_voters(batch.id) if batch.id else []
+            )
             results_content = self.results_service.generate_results_content(
-                batch, votes, vote_count, total_voters
+                batch, votes, vote_count, total_voters, batch_voters
             )
 
             # Post to the same topic

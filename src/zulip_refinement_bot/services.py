@@ -53,12 +53,16 @@ class BatchService:
         try:
             batch_id = self.database.create_batch(date_str, deadline_str, facilitator)
             self.database.add_issues_to_batch(batch_id, parse_result.issues)
+            from .config import Config
+
+            self.database.add_batch_voters(batch_id, Config._default_voters)
 
             logger.info(
                 "Batch created successfully",
                 batch_id=batch_id,
                 facilitator=facilitator,
                 issue_count=len(parse_result.issues),
+                voter_count=len(Config._default_voters),
             )
 
             return batch_id, parse_result.issues, deadline
@@ -171,17 +175,15 @@ class VotingService:
             ValidationError: If vote validation fails
             VotingError: If vote storage fails
         """
-        # Check authorization
-        if voter not in self.config.voter_list:
-            authorized_voters = ", ".join(self.config.voter_list)
-            raise AuthorizationError(
-                f"You are not authorized to vote. Authorized voters: {authorized_voters}"
-            )
-
         if batch.id is None:
             raise VotingError("No active batch found. Cannot submit votes.")
 
-        # Parse votes
+        batch_voters = self.database.get_batch_voters(batch.id)
+        if voter not in batch_voters:
+            was_added = self.database.add_voter_to_batch(batch.id, voter)
+            if was_added:
+                logger.info("Added new voter to batch", batch_id=batch.id, voter=voter)
+
         estimates, validation_errors = self.parser.parse_estimation_input(content)
 
         if validation_errors:
@@ -197,10 +199,8 @@ class VotingService:
                 "Valid story points: 1, 2, 3, 5, 8, 13, 21"
             )
 
-        # Validate vote completeness
         self._validate_vote_completeness(estimates, batch)
 
-        # Store votes
         stored_count, updated_count, new_count = self._store_votes(batch.id, voter, estimates)
 
         if stored_count != len(estimates):
@@ -208,9 +208,9 @@ class VotingService:
                 f"Only {stored_count} out of {len(estimates)} votes were processed successfully."
             )
 
-        # Check if all voters have completed
         vote_count = self.database.get_vote_count_by_voter(batch.id)
-        all_voters_complete = vote_count >= len(self.config.voter_list)
+        batch_voters = self.database.get_batch_voters(batch.id)
+        all_voters_complete = vote_count >= len(batch_voters)
 
         logger.info(
             "Votes submitted successfully",
@@ -221,7 +221,7 @@ class VotingService:
             all_voters_complete=all_voters_complete,
         )
 
-        return estimates, updated_count > 0, all_voters_complete
+        return estimates, stored_count > 0, all_voters_complete
 
     def _validate_vote_completeness(self, estimates: dict[str, int], batch: BatchData) -> None:
         """Validate that all batch issues are voted on.
@@ -301,7 +301,8 @@ class VotingService:
             Tuple of (vote_count, total_voters, is_complete)
         """
         vote_count = self.database.get_vote_count_by_voter(batch_id)
-        total_voters = len(self.config.voter_list)
+        batch_voters = self.database.get_batch_voters(batch_id)
+        total_voters = len(batch_voters)
         is_complete = vote_count >= total_voters
 
         return vote_count, total_voters, is_complete
@@ -319,7 +320,12 @@ class ResultsService:
         self.config = config
 
     def generate_results_content(
-        self, batch: BatchData, votes: list[EstimationVote], vote_count: int, total_voters: int
+        self,
+        batch: BatchData,
+        votes: list[EstimationVote],
+        vote_count: int,
+        total_voters: int,
+        batch_voters: list[str],
     ) -> str:
         """Generate the content for estimation results.
 
@@ -328,6 +334,7 @@ class ResultsService:
             votes: All votes for the batch
             vote_count: Number of voters who submitted votes
             total_voters: Total number of expected voters
+            batch_voters: List of voters for this specific batch
 
         Returns:
             Formatted results content
@@ -339,8 +346,7 @@ class ResultsService:
                 votes_by_issue[vote.issue_number] = []
             votes_by_issue[vote.issue_number].append(vote)
 
-        # Find non-voters
-        all_voters = set(self.config.voter_list)
+        all_voters = set(batch_voters)
         voted_voters = {vote.voter for vote in votes}
         non_voters = all_voters - voted_voters
 

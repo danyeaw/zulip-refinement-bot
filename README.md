@@ -66,7 +66,6 @@ Optional settings:
 STREAM_NAME=conda-maintainers
 DEFAULT_DEADLINE_HOURS=48
 MAX_ISSUES_PER_BATCH=6
-VOTER_LIST=voter1,voter2,voter3
 DATABASE_PATH=./data/refinement.db
 ```
 
@@ -78,6 +77,9 @@ DATABASE_PATH=./data/refinement.db
 - `status` - Show active batch info
 - `cancel` - Cancel active batch (facilitator only)
 - `complete` - Complete active batch (facilitator only)
+- `list voters` - Show voters for active batch
+- `add voter Name` - Add voter to active batch
+- `remove voter Name` - Remove voter from active batch
 
 ### Creating a Batch
 
@@ -99,6 +101,20 @@ Vote by DMing the bot with story points for each issue:
 ```
 
 Valid story points: 1, 2, 3, 5, 8, 13, 21 (Fibonacci sequence)
+
+### Voter Management
+
+Each batch has its own voter list. When you create a new batch, it starts with the default team members, but you can:
+
+```
+list voters                # See who's voting on current batch
+add voter Jane Doe         # Add someone to current batch
+add voter @**jaimergp**    # Add using Zulip mention format
+remove voter John          # Remove someone from current batch
+remove voter @**jaimergp** # Remove using Zulip mention format
+```
+
+New voters are automatically added if they submit votes but aren't on the list.
 
 ### Rules
 

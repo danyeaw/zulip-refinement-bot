@@ -52,6 +52,18 @@ class DatabaseInterface(ABC):
     @abstractmethod
     def update_batch_message_id(self, batch_id: int, message_id: int) -> None: ...
 
+    @abstractmethod
+    def add_batch_voters(self, batch_id: int, voters: list[str]) -> None: ...
+
+    @abstractmethod
+    def get_batch_voters(self, batch_id: int) -> list[str]: ...
+
+    @abstractmethod
+    def add_voter_to_batch(self, batch_id: int, voter: str) -> bool: ...
+
+    @abstractmethod
+    def remove_voter_from_batch(self, batch_id: int, voter: str) -> bool: ...
+
 
 class ParserInterface(ABC):
     """Interface for input parsing operations."""
@@ -99,3 +111,12 @@ class MessageHandlerInterface(ABC):
 
     @abstractmethod
     def _process_batch_completion(self, batch: Any, auto_completed: bool = False) -> None: ...
+
+    @abstractmethod
+    def handle_list_voters(self, message: dict[str, Any]) -> None: ...
+
+    @abstractmethod
+    def handle_add_voter(self, message: dict[str, Any], content: str) -> None: ...
+
+    @abstractmethod
+    def handle_remove_voter(self, message: dict[str, Any], content: str) -> None: ...

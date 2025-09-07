@@ -46,26 +46,20 @@ class TestConfig:
             assert config.log_level == "INFO"
             assert config.log_format == "json"
 
-    def test_config_voter_list(self):
-        """Test voter list configuration."""
+    def test_config_default_voters(self):
+        """Test that default voters are available."""
         expected_voters = [
-            "jaimergp",
-            "Jannis Leidel",
-            "Sophia Castellarin",
-            "Daniel Holth",
-            "Ryan Keith",
-            "Mahe Iyer",
             "Dan Yeaw",
+            "Daniel Holth",
+            "Jannis Leidel",
+            "Mahe Iyer",
+            "Ryan Keith",
+            "Sophia Castellarin",
+            "Travis Hathaway",
+            "jaimergp",
         ]
 
-        config = Config(
-            zulip_email="test@example.com",
-            zulip_api_key="test_key",
-            zulip_site="https://test.zulipchat.com",
-            voter_list_str=",".join(expected_voters),
-        )
-
-        assert config.voter_list == expected_voters
+        assert Config._default_voters == expected_voters
 
     def test_database_path_creation(self):
         """Test that database directory is created."""
