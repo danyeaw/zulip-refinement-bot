@@ -68,6 +68,18 @@ class DatabaseManager:
                 )
             """)
 
+            # Migration: Add message_id column if it doesn't exist
+            try:
+                conn.execute("ALTER TABLE batches ADD COLUMN message_id INTEGER")
+                logger.info("Added message_id column to batches table")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" in str(e).lower():
+                    # Column already exists, which is fine
+                    pass
+                else:
+                    # Some other error, re-raise it
+                    raise
+
             conn.commit()
 
     def get_active_batch(self) -> BatchData | None:
@@ -357,7 +369,28 @@ class DatabaseManager:
             batch_id: ID of the batch
             message_id: Zulip message ID of the batch refinement message
         """
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("UPDATE batches SET message_id = ? WHERE id = ?", (message_id, batch_id))
-            conn.commit()
-        logger.info("Updated batch message ID", batch_id=batch_id, message_id=message_id)
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.execute(
+                    "UPDATE batches SET message_id = ? WHERE id = ?", (message_id, batch_id)
+                )
+                rows_affected = cursor.rowcount
+                conn.commit()
+
+                if rows_affected == 0:
+                    logger.warning(
+                        "No batch found to update message ID",
+                        batch_id=batch_id,
+                        message_id=message_id,
+                    )
+                else:
+                    logger.info(
+                        "Updated batch message ID", batch_id=batch_id, message_id=message_id
+                    )
+        except Exception as e:
+            logger.error(
+                "Failed to update batch message ID",
+                batch_id=batch_id,
+                message_id=message_id,
+                error=str(e),
+            )

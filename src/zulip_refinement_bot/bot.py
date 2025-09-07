@@ -25,11 +25,10 @@ class ZulipResponse(TypedDict, total=False):
     The API uses "retry-after" (with hyphen) which we access via dict key.
     """
 
-    result: str  # "success" or "error" - always present
-    msg: str  # Error message or empty string on success - always present
-    id: int  # Message ID (present on successful send_message)
-    code: str  # Error code (present on error)
-    # Note: "retry-after" field accessed via response.get("retry-after")
+    result: str
+    msg: str
+    id: int
+    code: str
 
 
 class RefinementBot:
@@ -46,7 +45,6 @@ class RefinementBot:
         self.github_api = GitHubAPI(timeout=config.github_timeout)
         self.parser = InputParser(config, self.github_api)
 
-        # Initialize Zulip client
         self.zulip_client = zulip.Client(
             email=config.zulip_email,
             api_key=config.zulip_api_key,
@@ -97,7 +95,9 @@ class RefinementBot:
         try:
             msg_data = MessageData(**message)
 
-            # Only respond to direct messages for commands
+            if msg_data.sender_email == self.config.zulip_email:
+                return
+
             if msg_data.type != "private":
                 return
 
@@ -107,7 +107,6 @@ class RefinementBot:
                 self._send_reply(message, self.usage())
                 return
 
-            # Parse command
             if content.lower().startswith("start batch"):
                 self._handle_start_batch(message, content)
             elif content.lower() == "status":
@@ -115,7 +114,6 @@ class RefinementBot:
             elif content.lower() == "cancel":
                 self._handle_cancel(message)
             else:
-                # Check if this might be a vote submission
                 if self._is_vote_format(content):
                     self._handle_vote_submission(message, content)
                 else:
@@ -136,7 +134,6 @@ class RefinementBot:
             message: Zulip message data
             content: Message content
         """
-        # Check for existing active batch
         active_batch = self.db_manager.get_active_batch()
         if active_batch:
             self._send_reply(
@@ -144,13 +141,10 @@ class RefinementBot:
             )
             return
 
-        # Parse input
         parse_result = self.parser.parse_batch_input(content)
         if not parse_result.success:
             self._send_reply(message, parse_result.error)
             return
-
-        # Create batch
         facilitator = message["sender_full_name"]
         now = datetime.now(UTC)
         date_str = now.strftime("%Y-%m-%d")
@@ -161,10 +155,7 @@ class RefinementBot:
             batch_id = self.db_manager.create_batch(date_str, deadline_str, facilitator)
             self.db_manager.add_issues_to_batch(batch_id, parse_result.issues)
 
-            # Send confirmation DM
             self._send_batch_confirmation(message, parse_result.issues, deadline, date_str)
-
-            # Create topic in stream
             self._create_batch_topic(batch_id, parse_result.issues, deadline, facilitator, date_str)
 
         except Exception as e:
@@ -215,7 +206,6 @@ class RefinementBot:
             self._send_reply(message, "✅ No active batch to cancel.")
             return
 
-        # Check if user is the facilitator
         if message["sender_full_name"] != active_batch.facilitator:
             self._send_reply(
                 message,
@@ -320,7 +310,6 @@ Posting to #{self.config.stream_name} now..."""
                 }
             )
 
-            # Store the message ID for future updates
             if response.get("result") == "success" and "id" in response:
                 message_id = response["id"]
                 self.db_manager.update_batch_message_id(batch_id, message_id)
@@ -330,8 +319,13 @@ Posting to #{self.config.stream_name} now..."""
                     topic=topic_name,
                     message_id=message_id,
                 )
+            elif response.get("result") == "success":
+                logger.warning(
+                    "Batch message sent successfully but no message ID in response",
+                    batch_id=batch_id,
+                    response=response,
+                )
             elif response.get("result") == "error":
-                # Handle API errors more specifically
                 error_code = response.get("code", "UNKNOWN")
                 error_msg = response.get("msg", "Unknown error")
                 logger.error(
@@ -341,6 +335,7 @@ Posting to #{self.config.stream_name} now..."""
                     error_msg=error_msg,
                     response=response,
                 )
+                return
             else:
                 logger.warning(
                     "Unexpected response format from Zulip API",
@@ -362,7 +357,6 @@ Posting to #{self.config.stream_name} now..."""
         """
         import re
 
-        # Look for pattern like "#1234: 5" anywhere in the content
         vote_pattern = re.compile(r"#\d+:\s*\d+")
         return bool(vote_pattern.search(content))
 
@@ -375,7 +369,6 @@ Posting to #{self.config.stream_name} now..."""
         """
         voter_name = message["sender_full_name"]
 
-        # Check if voter is authorized
         if voter_name not in self.config.voter_list:
             self._send_reply(
                 message,
@@ -383,7 +376,6 @@ Posting to #{self.config.stream_name} now..."""
             )
             return
 
-        # Check if there's an active batch
         active_batch = self.db_manager.get_active_batch()
         if not active_batch or active_batch.id is None:
             self._send_reply(message, "❌ No active batch found. Cannot submit votes.")
@@ -491,8 +483,8 @@ Posting to #{self.config.stream_name} now..."""
                 f"Thank you for participating in the refinement process.",
             )
 
-            # Update the batch message with current vote count (only if there were new voters)
-            if new_count > 0:
+            # Update the batch message with current vote count (for both new and updated votes)
+            if new_count > 0 or updated_count > 0:
                 self._update_batch_message(active_batch.id, active_batch)
         else:
             self._send_reply(
@@ -607,12 +599,11 @@ Posting to #{self.config.stream_name} now..."""
                         error_type=type(edit_error).__name__,
                     )
             else:
-                logger.error(
-                    "Cannot update batch message: no message ID stored",
+                logger.warning(
+                    "Cannot update batch message: no message ID stored - batch message was likely not created successfully",
                     batch_id=batch_id,
-                    batch_data=active_batch.dict()
-                    if hasattr(active_batch, "dict")
-                    else str(active_batch),
+                    vote_count=vote_count,
+                    total_voters=total_voters,
                 )
 
         except Exception as e:
@@ -635,7 +626,7 @@ Posting to #{self.config.stream_name} now..."""
             )
 
             if response.get("result") == "success":
-                logger.info("Sent private message reply", recipient=message["sender_email"])
+                logger.debug("Sent private message reply", recipient=message["sender_email"])
             else:
                 logger.error(
                     "Failed to send private message reply - API error",
