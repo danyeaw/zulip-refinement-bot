@@ -170,9 +170,8 @@ pytest tests/test_voting_service.py       # Voting logic
 ### Code Quality
 
 ```bash
-ruff format src/ tests/
-ruff check src/ tests/
-mypy src/
+pre-commit install
+pre-commit run --all-files
 ```
 
 ## Deployment
