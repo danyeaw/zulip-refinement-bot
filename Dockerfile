@@ -1,5 +1,5 @@
 # Multi-stage build for production-ready container
-FROM condaforge/mambaforge:latest as builder
+FROM condaforge/miniforge3:2025.3.1 AS builder
 
 # Set working directory
 WORKDIR /app
@@ -12,7 +12,7 @@ RUN mamba env create -f environment.yml && \
     mamba clean -afy
 
 # Production stage
-FROM condaforge/mambaforge:latest
+FROM condaforge/miniforge3:2025.3.1
 
 # Set labels for better container management
 LABEL maintainer="your.email@example.com"
@@ -28,9 +28,6 @@ WORKDIR /app
 # Copy conda environment from builder
 COPY --from=builder /opt/conda/envs/zulip-refinement-bot /opt/conda/envs/zulip-refinement-bot
 
-# Make RUN commands use the new environment
-SHELL ["conda", "run", "-n", "zulip-refinement-bot", "/bin/bash", "-c"]
-
 # Copy application code
 COPY src/ src/
 COPY pyproject.toml .
@@ -38,7 +35,7 @@ COPY README.md .
 COPY LICENSE .
 
 # Install the application
-RUN conda run -n zulip-refinement-bot pip install -e .
+RUN /opt/conda/bin/conda run -n zulip-refinement-bot pip install -e .
 
 # Create data directory for SQLite database
 RUN mkdir -p /app/data && chown -R botuser:botuser /app
@@ -57,7 +54,7 @@ EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD conda run -n zulip-refinement-bot python -c "import sys; sys.exit(0)"
+    CMD /opt/conda/bin/conda run -n zulip-refinement-bot python -c "import sys; sys.exit(0)"
 
 # Default command
-CMD ["conda", "run", "--no-capture-output", "-n", "zulip-refinement-bot", "zulip-refinement-bot", "run", "--log-format", "json"]
+CMD ["/opt/conda/bin/conda", "run", "--no-capture-output", "-n", "zulip-refinement-bot", "zulip-refinement-bot", "run", "--log-format", "json"]
