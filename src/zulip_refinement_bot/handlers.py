@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 import re
 from datetime import datetime
 from typing import Any
@@ -300,15 +301,12 @@ Posting to #{self.config.stream_name} now..."""
 
         voter_mentions = ", ".join([f"@**{voter}**" for voter in self.config.voter_list])
 
-        # Create example format string
-        example_issues = [
-            issues[0].issue_number,
-            issues[1].issue_number if len(issues) > 1 else issues[0].issue_number,
-            issues[2].issue_number if len(issues) > 2 else issues[0].issue_number,
-        ]
-        example_format = (
-            f"#{example_issues[0]}: 5, #{example_issues[1]}: 8, #{example_issues[2]}: 3"
-        )
+        fibonacci_numbers = [1, 2, 3, 5, 8, 13, 21]
+        example_parts = []
+        for issue in issues:
+            random_fib = random.choice(fibonacci_numbers)  # nosec B311
+            example_parts.append(f"#{issue.issue_number}: {random_fib}")
+        example_format = ", ".join(example_parts)
 
         deadline_str = self.business_hours_calc.format_business_deadline(deadline)
         hours_text = f"({self.config.default_deadline_hours} hours from now)"
