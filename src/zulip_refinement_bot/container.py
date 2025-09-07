@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from .config import Config
-from .database_pool import DatabasePool
+from .database import DatabaseManager
 from .github_api import GitHubAPI
 from .handlers import MessageHandler
 from .interfaces import (
@@ -32,8 +32,8 @@ class Container:
 
     def get_database(self) -> DatabaseInterface:
         if DatabaseInterface not in self._instances:
-            self._instances[DatabaseInterface] = DatabasePool(
-                self.config.database_path, pool_size=5
+            self._instances[DatabaseInterface] = DatabaseManager(
+                self.config.database_path, auto_migrate=True
             )
         return self._instances[DatabaseInterface]  # type: ignore[return-value]
 

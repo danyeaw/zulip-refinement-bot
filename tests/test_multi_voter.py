@@ -52,7 +52,7 @@ def message_handler(
 def active_batch_with_voters(db_manager: DatabaseManager) -> int:
     """Create an active batch with some initial voters."""
     # Create batch
-    batch_id = db_manager.create_batch("2024-03-25", "2024-03-27T14:00:00+00:00", "Test User")
+    batch_id: int = db_manager.create_batch("2024-03-25", "2024-03-27T14:00:00+00:00", "Test User")
 
     # Add issues
     issues = [

@@ -12,7 +12,6 @@ import pytest
 from zulip_refinement_bot.config import Config
 from zulip_refinement_bot.container import Container
 from zulip_refinement_bot.database import DatabaseManager
-from zulip_refinement_bot.database_pool import DatabasePool
 from zulip_refinement_bot.github_api import GitHubAPI
 
 
@@ -48,9 +47,9 @@ def db_manager(temp_db: Path) -> DatabaseManager:
 
 
 @pytest.fixture
-def db_pool(temp_db: Path) -> DatabasePool:
-    """Create a database pool with temporary database."""
-    return DatabasePool(temp_db, pool_size=2)
+def db_pool(temp_db: Path) -> DatabaseManager:
+    """Create a database manager with temporary database (pool functionality removed)."""
+    return DatabaseManager(temp_db)
 
 
 @pytest.fixture

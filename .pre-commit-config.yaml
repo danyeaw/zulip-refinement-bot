@@ -21,7 +21,7 @@ repos:
     rev: 412de98d50e846f31ea6f4b0ad036f2c24a7a024  # frozen: v1.17.1
     hooks:
       - id: mypy
-        args: [--ignore-missing-imports]
+        args: [--ignore-missing-imports, --explicit-package-bases]
 
   - repo: https://github.com/pycqa/bandit
     rev: 2d0b675b04c80ae42277e10500db06a0a37bae17  # frozen: 1.8.6
@@ -29,3 +29,27 @@ repos:
       - id: bandit
         args: ["-c", "pyproject.toml"]
         additional_dependencies: ["bandit[toml]"]
+
+  # Database migration specific checks
+  - repo: local
+    hooks:
+      - id: migration-version-check
+        name: Check migration version sequence
+        entry: python scripts/check_migration_versions.py
+        language: python
+        files: ^src/zulip_refinement_bot/migrations/versions/.*\.py$
+        pass_filenames: false
+
+      - id: migration-test-coverage
+        name: Ensure migration tests exist
+        entry: python scripts/check_migration_test_coverage.py
+        language: python
+        files: ^src/zulip_refinement_bot/migrations/versions/.*\.py$
+        pass_filenames: false
+
+      - id: database-schema-validation
+        name: Validate database schema consistency
+        entry: python scripts/validate_schema_consistency.py
+        language: python
+        files: ^src/zulip_refinement_bot/(migrations|database).*\.py$
+        pass_filenames: false

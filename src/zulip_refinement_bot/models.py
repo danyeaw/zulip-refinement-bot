@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field
 
@@ -56,7 +56,9 @@ class EstimationVote(BaseModel):
     voter: str = Field(..., description="Voter name")
     issue_number: str = Field(..., description="Issue number")
     points: int = Field(..., description="Story points estimate")
-    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Vote timestamp")
+    timestamp: datetime = Field(
+        default_factory=lambda: datetime.now(UTC), description="Vote timestamp"
+    )
 
 
 class FinalEstimate(BaseModel):
@@ -66,7 +68,7 @@ class FinalEstimate(BaseModel):
     final_points: int = Field(..., description="Final agreed story points")
     rationale: str = Field(default="", description="Brief rationale for the estimate")
     timestamp: datetime = Field(
-        default_factory=datetime.utcnow, description="When estimate was finalized"
+        default_factory=lambda: datetime.now(UTC), description="When estimate was finalized"
     )
 
 
@@ -80,5 +82,5 @@ class BatchResults(BaseModel):
         default_factory=dict, description="Final estimates after discussion"
     )
     completed_at: datetime = Field(
-        default_factory=datetime.utcnow, description="Completion timestamp"
+        default_factory=lambda: datetime.now(UTC), description="Completion timestamp"
     )

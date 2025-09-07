@@ -1,4 +1,4 @@
-"""Database management for the Zulip Refinement Bot."""
+"""Database management with migration system for the Zulip Refinement Bot."""
 
 from __future__ import annotations
 
@@ -9,124 +9,51 @@ from pathlib import Path
 import structlog
 
 from .interfaces import DatabaseInterface
+from .migrations.runner import MigrationRunner
+from .migrations.versions import ALL_MIGRATIONS
 from .models import BatchData, EstimationVote, FinalEstimate, IssueData
 
 logger = structlog.get_logger(__name__)
 
 
 class DatabaseManager(DatabaseInterface):
-    """Handles SQLite database operations for batch and issue storage."""
+    """Database manager that uses the migration system for schema management."""
 
-    def __init__(self, db_path: Path):
-        """Initialize database manager.
+    def __init__(self, db_path: Path, auto_migrate: bool = True):
+        """Initialize database manager with migration support.
 
         Args:
             db_path: Path to the SQLite database file
+            auto_migrate: Whether to automatically run pending migrations on startup
         """
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._init_database()
-        logger.info("Database initialized", db_path=str(self.db_path))
 
-    def _init_database(self) -> None:
-        """Initialize database with required tables."""
-        with sqlite3.connect(self.db_path) as conn:
-            # Create batches table
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS batches (
-                    id INTEGER PRIMARY KEY,
-                    date TEXT NOT NULL,
-                    deadline TEXT NOT NULL,
-                    facilitator TEXT NOT NULL,
-                    status TEXT DEFAULT 'active',
-                    message_id INTEGER,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
+        self.migration_runner = MigrationRunner(self.db_path)
+        self.migration_runner.register_migrations(ALL_MIGRATIONS)
 
-            # Create issues table
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS issues (
-                    id INTEGER PRIMARY KEY,
-                    batch_id INTEGER,
-                    issue_number TEXT NOT NULL,
-                    title TEXT NOT NULL,
-                    url TEXT DEFAULT '',
-                    FOREIGN KEY (batch_id) REFERENCES batches (id)
-                )
-            """)
+        if auto_migrate:
+            self._run_migrations()
 
-            # Create votes table for future use
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS votes (
-                    id INTEGER PRIMARY KEY,
-                    batch_id INTEGER,
-                    issue_number TEXT NOT NULL,
-                    voter TEXT NOT NULL,
-                    points INTEGER NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (batch_id) REFERENCES batches (id),
-                    UNIQUE(batch_id, issue_number, voter)
-                )
-            """)
+        logger.info("Database initialized with migration system", db_path=str(self.db_path))
 
-            # Create batch_voters table
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS batch_voters (
-                    id INTEGER PRIMARY KEY,
-                    batch_id INTEGER NOT NULL,
-                    voter_name TEXT NOT NULL,
-                    FOREIGN KEY (batch_id) REFERENCES batches (id),
-                    UNIQUE(batch_id, voter_name)
-                )
-            """)
-
-            # Migration: Add message_id column if it doesn't exist
-            try:
-                conn.execute("ALTER TABLE batches ADD COLUMN message_id INTEGER")
-                logger.info("Added message_id column to batches table")
-            except sqlite3.OperationalError as e:
-                if "duplicate column name" in str(e).lower():
-                    # Column already exists, which is fine
-                    pass
-                else:
-                    # Some other error, re-raise it
-                    raise
-
-            conn.commit()
-
-        self._migrate_existing_batches()
-
-    def _migrate_existing_batches(self) -> None:
-        """Migrate existing batches to have default voters if they don't have any."""
+    def _run_migrations(self) -> None:
+        """Run any pending migrations."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                # Find batches without voters
-                cursor = conn.execute("""
-                    SELECT b.id FROM batches b
-                    LEFT JOIN batch_voters bv ON b.id = bv.batch_id
-                    WHERE bv.batch_id IS NULL
-                """)
-                batches_without_voters = [row[0] for row in cursor.fetchall()]
-
-                if batches_without_voters:
-                    from .config import Config
-
-                    default_voters = Config._default_voters
-
-                    for batch_id in batches_without_voters:
-                        conn.executemany(
-                            "INSERT INTO batch_voters (batch_id, voter_name) VALUES (?, ?)",
-                            [(batch_id, voter) for voter in default_voters],
-                        )
-
-                    conn.commit()
-                    logger.info(
-                        "Migrated existing batches to have default voters",
-                        batch_count=len(batches_without_voters),
-                    )
+            applied = self.migration_runner.run_migrations()
+            if applied:
+                logger.info("Applied migrations on startup", migrations=applied)
         except Exception as e:
-            logger.warning("Failed to migrate existing batches", error=str(e))
+            logger.error("Failed to run migrations on startup", error=str(e))
+            raise
+
+    def get_migration_status(self) -> dict[str, dict]:
+        """Get the status of all migrations."""
+        return self.migration_runner.get_migration_status()
+
+    def validate_schema(self) -> bool:
+        """Validate that all applied migrations are still valid."""
+        return self.migration_runner.validate_migrations()
 
     def get_active_batch(self) -> BatchData | None:
         """Get the currently active batch if one exists.
@@ -165,13 +92,13 @@ class DatabaseManager(DatabaseInterface):
     def create_batch(self, date: str, deadline: str, facilitator: str) -> int:
         """Create a new batch and return its ID.
 
-        Args:
-            date: Batch date in YYYY-MM-DD format
-            deadline: Deadline in ISO format
-            facilitator: Name of the batch facilitator
+                Args:
+                    date: Batch date in YYYY-MM-DD format
+                    deadline: Deadline in ISO format
+                    facilitator: Name of the batch facilitator
 
-        Returns:
-            ID of the created batch
+        t       Returns:
+                    ID of the created batch
         """
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute(
@@ -270,20 +197,6 @@ class DatabaseManager(DatabaseInterface):
         """
         try:
             with sqlite3.connect(self.db_path) as conn:
-                # Create final_estimates table if it doesn't exist
-                conn.execute("""
-                    CREATE TABLE IF NOT EXISTS final_estimates (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        batch_id INTEGER NOT NULL,
-                        issue_number TEXT NOT NULL,
-                        final_points INTEGER NOT NULL,
-                        rationale TEXT DEFAULT '',
-                        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (batch_id) REFERENCES batches (id),
-                        UNIQUE(batch_id, issue_number)
-                    )
-                """)
-
                 # Insert or replace the final estimate
                 conn.execute(
                     """
@@ -315,7 +228,6 @@ class DatabaseManager(DatabaseInterface):
         Returns:
             List of final estimates
         """
-
         try:
             with sqlite3.connect(self.db_path) as conn:
                 conn.row_factory = sqlite3.Row
@@ -472,26 +384,11 @@ class DatabaseManager(DatabaseInterface):
             Number of unique voters
         """
         with sqlite3.connect(self.db_path) as conn:
-            # First get the actual voter names for debugging
-            debug_cursor = conn.execute(
-                "SELECT DISTINCT voter FROM votes WHERE batch_id = ?", (batch_id,)
-            )
-            voters = [row[0] for row in debug_cursor.fetchall()]
-
             cursor = conn.execute(
                 "SELECT COUNT(DISTINCT voter) FROM votes WHERE batch_id = ?", (batch_id,)
             )
             result = cursor.fetchone()
-            count = result[0] if result else 0
-
-            logger.debug(
-                "Vote count query result",
-                batch_id=batch_id,
-                unique_voters=voters,
-                vote_count=count,
-            )
-
-            return count
+            return result[0] if result else 0
 
     def has_voter_voted(self, batch_id: int, voter: str) -> bool:
         """Check if a voter has already submitted votes for a batch.

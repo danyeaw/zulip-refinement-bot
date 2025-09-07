@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from zulip_refinement_bot.database import DatabaseManager
-from zulip_refinement_bot.database_pool import DatabasePool
 from zulip_refinement_bot.models import IssueData
 
 
@@ -91,30 +90,6 @@ class TestBatchVoters:
         assert len(retrieved_voters1) == 2
         assert len(retrieved_voters2) == 3
 
-    def test_migration_adds_default_voters(self, db_manager: DatabaseManager):
-        """Test that migration adds default voters to existing batches."""
-        # Create a batch without calling add_batch_voters (simulating old batch)
-        batch_id = db_manager.create_batch("2024-03-25", "2024-03-27T14:00:00+00:00", "Test User")
-
-        # Manually run migration (normally happens during init)
-        db_manager._migrate_existing_batches()
-
-        # Should now have default voters
-        voters = db_manager.get_batch_voters(batch_id)
-        assert len(voters) > 0
-        # Should contain the default voters from Config._default_voters
-        expected_defaults = [
-            "Dan Yeaw",
-            "Daniel Holth",
-            "Jannis Leidel",
-            "Mahe Iyer",
-            "Ryan Keith",
-            "Sophia Castellarin",
-            "Travis Hathaway",
-            "jaimergp",
-        ]
-        assert set(voters) == set(expected_defaults)
-
     def test_voters_sorted_alphabetically(self, db_manager: DatabaseManager):
         """Test that voters are returned in alphabetical order."""
         # Create a batch
@@ -135,7 +110,7 @@ class TestBatchVoters:
 class TestBatchVotersPool:
     """Test per-batch voter storage functionality with DatabasePool."""
 
-    def test_add_batch_voters_pool(self, db_pool: DatabasePool):
+    def test_add_batch_voters_pool(self, db_pool: DatabaseManager):
         """Test adding voters to a batch using DatabasePool."""
         # Create a batch
         batch_id = db_pool.create_batch("2024-03-25", "2024-03-27T14:00:00+00:00", "Test User")
@@ -149,7 +124,7 @@ class TestBatchVotersPool:
         assert set(retrieved_voters) == set(voters)
         assert len(retrieved_voters) == 3
 
-    def test_add_single_voter_pool(self, db_pool: DatabasePool):
+    def test_add_single_voter_pool(self, db_pool: DatabaseManager):
         """Test adding a single voter using DatabasePool."""
         # Create a batch
         batch_id = db_pool.create_batch("2024-03-25", "2024-03-27T14:00:00+00:00", "Test User")
@@ -167,17 +142,15 @@ class TestBatchVotersPool:
         assert "Charlie" in voters
         assert len(voters) == 3
 
-    def test_pool_cleanup(self, db_pool: DatabasePool):
-        """Test that database pool can be properly closed."""
+    def test_pool_cleanup(self, db_pool: DatabaseManager):
+        """Test that database manager works without connection pooling."""
         # Create some data
         batch_id = db_pool.create_batch("2024-03-25", "2024-03-27T14:00:00+00:00", "Test User")
         db_pool.add_batch_voters(batch_id, ["Alice", "Bob"])
 
-        # Close the pool
-        db_pool.close()
-
-        # This should not raise an exception
-        assert True
+        # Verify data was created (no pool cleanup needed)
+        voters = db_pool.get_batch_voters(batch_id)
+        assert len(voters) == 2
 
 
 class TestBatchVotersIntegration:

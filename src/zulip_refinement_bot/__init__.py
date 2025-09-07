@@ -12,7 +12,6 @@ from .bot import RefinementBot
 from .config import Config
 from .container import Container
 from .database import DatabaseManager
-from .database_pool import DatabasePool
 from .github_api import GitHubAPI
 from .handlers import MessageHandler
 from .parser import InputParser
@@ -23,7 +22,6 @@ __all__ = [
     "Config",
     "Container",
     "DatabaseManager",
-    "DatabasePool",
     "GitHubAPI",
     "InputParser",
     "BatchService",

@@ -13,12 +13,16 @@ from rich.logging import RichHandler
 from . import __version__
 from .bot import RefinementBot
 from .config import Config
+from .migrations.cli import app as migrate_app
 
 app = typer.Typer(
     name="zulip-refinement-bot",
     help="A modern Zulip bot for batch story point estimation and refinement workflows.",
     add_completion=False,
 )
+
+# Add migration commands as a subcommand
+app.add_typer(migrate_app, name="migrate")
 console = Console()
 
 
@@ -78,7 +82,7 @@ def setup_logging(log_level: str = "INFO", log_format: str = "json") -> None:
         )
 
 
-@app.command()
+@app.command()  # type: ignore[misc]
 def run(
     config_file: Path | None = typer.Option(
         None,
@@ -137,13 +141,13 @@ def run(
         sys.exit(1)
 
 
-@app.command()
+@app.command()  # type: ignore[misc]
 def version() -> None:
     """Show version information."""
     console.print(f"Zulip Refinement Bot v{__version__}")
 
 
-@app.command()
+@app.command()  # type: ignore[misc]
 def init_config(
     output: Path = typer.Option(
         Path(".env"),
