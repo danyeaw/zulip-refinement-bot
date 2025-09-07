@@ -224,6 +224,37 @@ class MessageHandler(MessageHandlerInterface):
         # Return as-is for plain text names
         return text
 
+    def _parse_voter_names(self, text: str) -> list[str]:
+        """Parse multiple voter names from text, handling various formats.
+
+        Supports formats like:
+        - "John Doe, Jane Smith, Bob Wilson"
+        - "@**jdoe**, @**jsmith**, Bob Wilson"
+        - "John Doe and Jane Smith"
+        - "John Doe, @**jsmith** and Bob Wilson"
+
+        Args:
+            text: Raw text containing one or more voter names
+
+        Returns:
+            List of clean usernames without Zulip mention formatting
+        """
+        import re
+
+        # Replace "and" with commas for consistent parsing
+        text = re.sub(r"\s+and\s+", ", ", text, flags=re.IGNORECASE)
+
+        # Split by commas and clean up each name
+        voter_names = []
+        for name_part in text.split(","):
+            name_part = name_part.strip()
+            if name_part:  # Skip empty parts
+                clean_name = self._parse_voter_name(name_part)
+                if clean_name and clean_name not in voter_names:  # Avoid duplicates
+                    voter_names.append(clean_name)
+
+        return voter_names
+
     def handle_list_voters(self, message: dict[str, Any]) -> None:
         """Handle list voters command."""
         try:
@@ -252,70 +283,140 @@ class MessageHandler(MessageHandlerInterface):
             self._send_reply(message, "❌ Error listing voters. Please try again.")
 
     def handle_add_voter(self, message: dict[str, Any], content: str) -> None:
-        """Handle add voter command."""
+        """Handle add voter command with support for multiple voters."""
         try:
             parts = content.split(maxsplit=2)
             if len(parts) < 3:
                 self._send_reply(
                     message,
-                    "❌ Please specify voter name. Format: `add voter John Doe` or `add voter @**username**`",
+                    "❌ Please specify voter name(s). Format:\n"
+                    "• `add voter John Doe`\n"
+                    "• `add voter @**username**`\n"
+                    "• `add voter John Doe, Jane Smith, @**bob**`\n"
+                    "• `add voter Alice and Bob`",
                 )
                 return
 
-            voter_name = self._parse_voter_name(parts[2])
+            voter_names = self._parse_voter_names(parts[2])
+            if not voter_names:
+                self._send_reply(message, "❌ No valid voter names found.")
+                return
 
             active_batch = self.batch_service.get_active_batch()
             if not active_batch or not active_batch.id:
                 self._send_reply(message, "❌ No active batch found.")
                 return
 
-            was_added = self.batch_service.database.add_voter_to_batch(active_batch.id, voter_name)
+            # Process each voter
+            added_voters = []
+            already_present = []
 
-            if was_added:
-                self._send_reply(message, f"✅ Added **{voter_name}** to batch {active_batch.id}")
-                self._update_batch_message(active_batch.id, active_batch)
-            else:
-                self._send_reply(
-                    message, f"ℹ️ **{voter_name}** was already in batch {active_batch.id}"
+            for voter_name in voter_names:
+                was_added = self.batch_service.database.add_voter_to_batch(
+                    active_batch.id, voter_name
                 )
+                if was_added:
+                    added_voters.append(voter_name)
+                else:
+                    already_present.append(voter_name)
+
+            # Build response message
+            response_parts = []
+
+            if added_voters:
+                if len(added_voters) == 1:
+                    response_parts.append(
+                        f"✅ Added **{added_voters[0]}** to batch {active_batch.id}"
+                    )
+                else:
+                    voter_list = ", ".join(f"**{name}**" for name in added_voters)
+                    response_parts.append(f"✅ Added {voter_list} to batch {active_batch.id}")
+
+                # Update batch message since voters were added
+                self._update_batch_message(active_batch.id, active_batch)
+
+            if already_present:
+                if len(already_present) == 1:
+                    response_parts.append(
+                        f"ℹ️ **{already_present[0]}** was already in batch {active_batch.id}"
+                    )
+                else:
+                    voter_list = ", ".join(f"**{name}**" for name in already_present)
+                    response_parts.append(f"ℹ️ {voter_list} were already in batch {active_batch.id}")
+
+            self._send_reply(message, "\n".join(response_parts))
 
         except Exception as e:
-            logger.error("Error adding voter", error=str(e))
-            self._send_reply(message, "❌ Error adding voter. Please try again.")
+            logger.error("Error adding voter(s)", error=str(e))
+            self._send_reply(message, "❌ Error adding voter(s). Please try again.")
 
     def handle_remove_voter(self, message: dict[str, Any], content: str) -> None:
-        """Handle remove voter command."""
+        """Handle remove voter command with support for multiple voters."""
         try:
             parts = content.split(maxsplit=2)
             if len(parts) < 3:
                 self._send_reply(
                     message,
-                    "❌ Please specify voter name. Format: `remove voter John Doe` or `remove voter @**username**`",
+                    "❌ Please specify voter name(s). Format:\n"
+                    "• `remove voter John Doe`\n"
+                    "• `remove voter @**username**`\n"
+                    "• `remove voter John Doe, Jane Smith, @**bob**`\n"
+                    "• `remove voter Alice and Bob`",
                 )
                 return
 
-            voter_name = self._parse_voter_name(parts[2])
+            voter_names = self._parse_voter_names(parts[2])
+            if not voter_names:
+                self._send_reply(message, "❌ No valid voter names found.")
+                return
 
             active_batch = self.batch_service.get_active_batch()
             if not active_batch or not active_batch.id:
                 self._send_reply(message, "❌ No active batch found.")
                 return
 
-            was_removed = self.batch_service.database.remove_voter_from_batch(
-                active_batch.id, voter_name
-            )
+            # Process each voter
+            removed_voters = []
+            not_present = []
 
-            if was_removed:
-                self._send_reply(
-                    message, f"✅ Removed **{voter_name}** from batch {active_batch.id}"
+            for voter_name in voter_names:
+                was_removed = self.batch_service.database.remove_voter_from_batch(
+                    active_batch.id, voter_name
                 )
+                if was_removed:
+                    removed_voters.append(voter_name)
+                else:
+                    not_present.append(voter_name)
+
+            # Build response message
+            response_parts = []
+
+            if removed_voters:
+                if len(removed_voters) == 1:
+                    response_parts.append(
+                        f"✅ Removed **{removed_voters[0]}** from batch {active_batch.id}"
+                    )
+                else:
+                    voter_list = ", ".join(f"**{name}**" for name in removed_voters)
+                    response_parts.append(f"✅ Removed {voter_list} from batch {active_batch.id}")
+
+                # Update batch message since voters were removed
                 self._update_batch_message(active_batch.id, active_batch)
-            else:
-                self._send_reply(message, f"ℹ️ **{voter_name}** was not in batch {active_batch.id}")
+
+            if not_present:
+                if len(not_present) == 1:
+                    response_parts.append(
+                        f"ℹ️ **{not_present[0]}** was not in batch {active_batch.id}"
+                    )
+                else:
+                    voter_list = ", ".join(f"**{name}**" for name in not_present)
+                    response_parts.append(f"ℹ️ {voter_list} were not in batch {active_batch.id}")
+
+            self._send_reply(message, "\n".join(response_parts))
 
         except Exception as e:
-            logger.error("Error removing voter", error=str(e))
-            self._send_reply(message, "❌ Error removing voter. Please try again.")
+            logger.error("Error removing voter(s)", error=str(e))
+            self._send_reply(message, "❌ Error removing voter(s). Please try again.")
 
     def handle_discussion_complete(self, message: dict[str, Any], content: str) -> None:
         """Handle discussion complete command with final estimates.

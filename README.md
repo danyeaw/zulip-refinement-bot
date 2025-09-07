@@ -11,12 +11,12 @@ A Zulip bot for batch story point estimation workflows. Fetches GitHub issues, m
 
 - GitHub integration for automatic issue title fetching
 - Batch estimation sessions with configurable deadlines
-- Fibonacci story point validation
+- Fibonacci story point validation (1, 2, 3, 5, 8, 13, 21)
 - Automated consensus analysis and reporting
-- **Discussion phase for disputed estimates** - automatically triggered when consensus isn't reached
-- **Discussion complete workflow** - facilitator can finalize estimates after team discussion
+- **Discussion phase** - automatically triggered when consensus isn't reached
+- **Multi-voter support** - add/remove multiple voters in single commands
 - Docker deployment support
-- Full type safety and test coverage
+- Full type safety and comprehensive testing
 
 ## Quick Start
 
@@ -79,10 +79,10 @@ DATABASE_PATH=./data/refinement.db
 - `status` - Show active batch info
 - `cancel` - Cancel active batch (facilitator only)
 - `complete` - Complete active batch (facilitator only)
-- `discussion complete #issue: points rationale, #issue: points rationale` - Complete discussion phase with final estimates (facilitator only)
+- `discussion complete #issue: points rationale` - Complete discussion phase (facilitator only)
 - `list voters` - Show voters for active batch
-- `add voter Name` - Add voter to active batch
-- `remove voter Name` - Remove voter from active batch
+- `add voter Name` - Add voter(s) to active batch (supports multiple)
+- `remove voter Name` - Remove voter(s) from active batch (supports multiple)
 
 ### Creating a Batch
 
@@ -107,14 +107,14 @@ Valid story points: 1, 2, 3, 5, 8, 13, 21 (Fibonacci sequence)
 
 ### Voter Management
 
-Each batch has its own voter list. When you create a new batch, it starts with the default team members, but you can:
+Each batch has its own voter list. You can add/remove voters individually or in groups:
 
 ```
-list voters                # See who's voting on current batch
-add voter Jane Doe         # Add someone to current batch
-add voter @**jaimergp**    # Add using Zulip mention format
-remove voter John          # Remove someone from current batch
-remove voter @**jaimergp** # Remove using Zulip mention format
+list voters                           # See who's voting on current batch
+add voter Jane Doe                    # Add single person
+add voter Alice, Bob, @**charlie**    # Add multiple people
+remove voter John Smith               # Remove single person
+remove voter Alice and Bob            # Remove multiple people
 ```
 
 New voters are automatically added if they submit votes but aren't on the list.
@@ -128,7 +128,7 @@ When voting completes, the bot analyzes results:
 
 During discussion phase:
 1. Team discusses disputed estimates in the stream
-2. Facilitator finalizes estimates using: `discussion complete #15169: 5 After discussion we agreed it's medium complexity, #15168: 8 More complex than expected`
+2. Facilitator finalizes estimates using: `discussion complete #15169: 5 After discussion we agreed it's medium complexity`
 3. Bot posts final results with rationale
 
 ### Rules
@@ -172,8 +172,16 @@ pre-commit install
 ### Testing
 
 ```bash
+# Run all tests
 pytest
+
+# Run with coverage report
 pytest --cov=src/zulip_refinement_bot --cov-report=html
+
+# Run specific test categories
+pytest tests/test_multi_voter.py          # Multi-voter functionality
+pytest tests/test_discussion_complete.py  # Discussion complete feature
+pytest tests/test_voting_service.py       # Voting logic
 ```
 
 ### Code Quality
