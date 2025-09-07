@@ -139,23 +139,6 @@ During discussion phase:
 - All voters must vote on all issues
 - Discussion phase automatically triggered when consensus isn't reached
 
-## Architecture
-
-```
-src/zulip_refinement_bot/
-├── bot.py              # Main bot implementation
-├── services.py         # Business logic (batch, voting, results)
-├── handlers.py         # Message routing and formatting
-├── database_pool.py    # Database with connection pooling
-├── github_api.py       # GitHub API integration
-├── parser.py           # Input parsing and validation
-├── config.py           # Configuration management
-├── models.py           # Data models
-├── interfaces.py       # Abstract interfaces
-├── container.py        # Dependency injection
-└── exceptions.py       # Custom exceptions
-```
-
 ## Development
 
 ### Setup
