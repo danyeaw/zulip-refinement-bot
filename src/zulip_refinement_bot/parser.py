@@ -44,7 +44,7 @@ class InputParser(ParserInterface):
         lines = [line.strip() for line in content.split("\n") if line.strip()]
 
         # Remove the command line
-        if lines and "start batch" in lines[0].lower():
+        if lines and lines[0].lower().startswith("start"):
             lines = lines[1:]
 
         if not lines:

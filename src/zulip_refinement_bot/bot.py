@@ -45,21 +45,22 @@ class RefinementBot:
 
     def usage(self) -> str:
         """Return usage instructions for the bot."""
-        return f"""**Zulip Story Point Estimation Bot**
+        return f"""Hi, I'm a friendly bot that helps with batch story point estimation.
 
 **Commands (DM only):**
-• `start batch` - Create new estimation batch
+• `start` - Create new estimation batch
 • `status` - Show active batch info
 • `cancel` - Cancel active batch (facilitator only)
 • `complete` - Complete active batch and show results (facilitator only)
-• `list voters` - Show voters for active batch
-• `add voter Name` - Add voter to active batch (supports @**username** format)
-• `remove voter Name` - Remove voter from active batch (supports @**username** format)
+• `list` - Show voters for active batch
+• `add Name` - Add voter(s) to active batch (supports multiple formats)
+• `remove Name` - Remove voter(s) from active batch (supports multiple formats)
+• `discussion complete #issue: points rationale` - Complete discussion phase (facilitator only)
 
 **Batch format (GitHub URLs only):**
-Send `start batch` followed by GitHub issue URLs, one per line:
+Send `start` followed by GitHub issue URLs, one per line:
 ```
-start batch
+start
 https://github.com/conda/conda/issues/15169
 https://github.com/conda/conda/issues/15168
 https://github.com/conda/conda/issues/15167
@@ -71,6 +72,22 @@ Submit estimates for all issues in the format:
 #15169: 5, #15168: 8, #15167: 3
 ```
 
+**Multi-voter management:**
+Add or remove multiple voters using various formats:
+```
+add John Doe
+add Alice, Bob, @**charlie**
+add Jane and Mike
+remove John Smith
+remove Alice and Bob
+```
+
+**Discussion phase:**
+When consensus isn't reached, complete discussion with:
+```
+discussion complete #15169: 5 After discussion we agreed it's medium complexity, #15168: 3 Simple bug fix confirmed
+```
+
 **Rules:**
 • Maximum {self.config.max_issues_per_batch} issues per batch
 • Only one active batch at a time
@@ -79,6 +96,7 @@ Submit estimates for all issues in the format:
 • Valid story points: 1, 2, 3, 5, 8, 13, 21
 • Must vote for all issues in the batch
 • Can update votes by submitting new estimates (replaces previous votes)
+• New voters automatically added when they submit votes
 • Batch completes automatically when all voters submit or when deadline expires"""
 
     def handle_message(self, message: dict[str, Any]) -> None:
@@ -122,7 +140,7 @@ Submit estimates for all issues in the format:
             content: Message content
         """
         try:
-            if content.lower().startswith("start batch"):
+            if content.lower().startswith("start"):
                 self.message_handler.handle_start_batch(message, content)
             elif content.lower() == "status":
                 self.message_handler.handle_status(message)
@@ -130,11 +148,11 @@ Submit estimates for all issues in the format:
                 self.message_handler.handle_cancel(message)
             elif content.lower() == "complete":
                 self.message_handler.handle_complete(message)
-            elif content.lower() == "list voters":
+            elif content.lower() == "list":
                 self.message_handler.handle_list_voters(message)
-            elif content.lower().startswith("add voter"):
+            elif content.lower().startswith("add "):
                 self.message_handler.handle_add_voter(message, content)
-            elif content.lower().startswith("remove voter"):
+            elif content.lower().startswith("remove "):
                 self.message_handler.handle_remove_voter(message, content)
             elif content.lower().startswith("discussion complete"):
                 self.message_handler.handle_discussion_complete(message, content)

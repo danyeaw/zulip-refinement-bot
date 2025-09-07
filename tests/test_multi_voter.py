@@ -128,7 +128,7 @@ class TestMultiVoterAdd:
             patch.object(message_handler, "_send_reply") as mock_reply,
             patch.object(message_handler, "_update_batch_message") as mock_update,
         ):
-            message_handler.handle_add_voter(message, "add voter Charlie")
+            message_handler.handle_add_voter(message, "add Charlie")
 
             # Verify voter was added
             voters = db_manager.get_batch_voters(active_batch_with_voters)
@@ -156,7 +156,7 @@ class TestMultiVoterAdd:
             patch.object(message_handler, "_send_reply") as mock_reply,
             patch.object(message_handler, "_update_batch_message") as mock_update,
         ):
-            message_handler.handle_add_voter(message, "add voter Charlie, David, Eve")
+            message_handler.handle_add_voter(message, "add Charlie, David, Eve")
 
             # Verify voters were added
             voters = db_manager.get_batch_voters(active_batch_with_voters)
@@ -185,7 +185,7 @@ class TestMultiVoterAdd:
             patch.object(message_handler, "_send_reply"),
             patch.object(message_handler, "_update_batch_message"),
         ):
-            message_handler.handle_add_voter(message, "add voter @**charlie**, David and @**eve**")
+            message_handler.handle_add_voter(message, "add @**charlie**, David and @**eve**")
 
             # Verify voters were added (mentions should be cleaned)
             voters = db_manager.get_batch_voters(active_batch_with_voters)
@@ -203,7 +203,7 @@ class TestMultiVoterAdd:
             patch.object(message_handler, "_send_reply") as mock_reply,
             patch.object(message_handler, "_update_batch_message") as mock_update,
         ):
-            message_handler.handle_add_voter(message, "add voter Alice")
+            message_handler.handle_add_voter(message, "add Alice")
 
             # Verify response
             mock_reply.assert_called_once()
@@ -226,7 +226,7 @@ class TestMultiVoterAdd:
             patch.object(message_handler, "_send_reply") as mock_reply,
             patch.object(message_handler, "_update_batch_message") as mock_update,
         ):
-            message_handler.handle_add_voter(message, "add voter Alice, Charlie, Bob, David")
+            message_handler.handle_add_voter(message, "add Alice, Charlie, Bob, David")
 
             # Verify new voters were added
             voters = db_manager.get_batch_voters(active_batch_with_voters)
@@ -247,7 +247,7 @@ class TestMultiVoterAdd:
         message = {"sender_full_name": "Test User", "sender_email": "test@example.com"}
 
         with patch.object(message_handler, "_send_reply") as mock_reply:
-            message_handler.handle_add_voter(message, "add voter Charlie")
+            message_handler.handle_add_voter(message, "add Charlie")
 
             mock_reply.assert_called_once_with(message, "❌ No active batch found.")
 
@@ -256,20 +256,20 @@ class TestMultiVoterAdd:
         message = {"sender_full_name": "Test User", "sender_email": "test@example.com"}
 
         with patch.object(message_handler, "_send_reply") as mock_reply:
-            message_handler.handle_add_voter(message, "add voter")
+            message_handler.handle_add_voter(message, "add")
 
             mock_reply.assert_called_once()
             response = mock_reply.call_args[0][1]
             assert "❌ Please specify voter name(s)" in response
-            assert "add voter John Doe" in response
-            assert "add voter Alice and Bob" in response
+            assert "add John Doe" in response
+            assert "add Alice and Bob" in response
 
     def test_add_voter_empty_names(self, message_handler: MessageHandler) -> None:
         """Test adding voter with empty names."""
         message = {"sender_full_name": "Test User", "sender_email": "test@example.com"}
 
         with patch.object(message_handler, "_send_reply") as mock_reply:
-            message_handler.handle_add_voter(message, "add voter , ,")
+            message_handler.handle_add_voter(message, "add , ,")
 
             mock_reply.assert_called_once_with(message, "❌ No valid voter names found.")
 
@@ -290,7 +290,7 @@ class TestMultiVoterRemove:
             patch.object(message_handler, "_send_reply") as mock_reply,
             patch.object(message_handler, "_update_batch_message") as mock_update,
         ):
-            message_handler.handle_remove_voter(message, "remove voter Alice")
+            message_handler.handle_remove_voter(message, "remove Alice")
 
             # Verify voter was removed
             voters = db_manager.get_batch_voters(active_batch_with_voters)
@@ -322,7 +322,7 @@ class TestMultiVoterRemove:
             patch.object(message_handler, "_send_reply") as mock_reply,
             patch.object(message_handler, "_update_batch_message") as mock_update,
         ):
-            message_handler.handle_remove_voter(message, "remove voter Alice, Charlie, David")
+            message_handler.handle_remove_voter(message, "remove Alice, Charlie, David")
 
             # Verify voters were removed
             voters = db_manager.get_batch_voters(active_batch_with_voters)
@@ -349,7 +349,7 @@ class TestMultiVoterRemove:
             patch.object(message_handler, "_send_reply") as mock_reply,
             patch.object(message_handler, "_update_batch_message") as mock_update,
         ):
-            message_handler.handle_remove_voter(message, "remove voter Charlie")
+            message_handler.handle_remove_voter(message, "remove Charlie")
 
             # Verify response
             mock_reply.assert_called_once()
@@ -372,7 +372,7 @@ class TestMultiVoterRemove:
             patch.object(message_handler, "_send_reply") as mock_reply,
             patch.object(message_handler, "_update_batch_message") as mock_update,
         ):
-            message_handler.handle_remove_voter(message, "remove voter Alice, Charlie, Bob, David")
+            message_handler.handle_remove_voter(message, "remove Alice, Charlie, Bob, David")
 
             # Verify present voters were removed
             voters = db_manager.get_batch_voters(active_batch_with_voters)
@@ -393,7 +393,7 @@ class TestMultiVoterRemove:
         message = {"sender_full_name": "Test User", "sender_email": "test@example.com"}
 
         with patch.object(message_handler, "_send_reply") as mock_reply:
-            message_handler.handle_remove_voter(message, "remove voter Alice")
+            message_handler.handle_remove_voter(message, "remove Alice")
 
             mock_reply.assert_called_once_with(message, "❌ No active batch found.")
 
@@ -402,13 +402,13 @@ class TestMultiVoterRemove:
         message = {"sender_full_name": "Test User", "sender_email": "test@example.com"}
 
         with patch.object(message_handler, "_send_reply") as mock_reply:
-            message_handler.handle_remove_voter(message, "remove voter")
+            message_handler.handle_remove_voter(message, "remove")
 
             mock_reply.assert_called_once()
             response = mock_reply.call_args[0][1]
             assert "❌ Please specify voter name(s)" in response
-            assert "remove voter John Doe" in response
-            assert "remove voter Alice and Bob" in response
+            assert "remove John Doe" in response
+            assert "remove Alice and Bob" in response
 
 
 class TestMultiVoterIntegration:
@@ -432,7 +432,7 @@ class TestMultiVoterIntegration:
             patch.object(message_handler, "_send_reply"),
             patch.object(message_handler, "_update_batch_message"),
         ):
-            message_handler.handle_add_voter(message, "add voter Charlie, David and Eve")
+            message_handler.handle_add_voter(message, "add Charlie, David and Eve")
 
         # Verify additions
         voters_after_add = db_manager.get_batch_voters(active_batch_with_voters)
@@ -443,7 +443,7 @@ class TestMultiVoterIntegration:
             patch.object(message_handler, "_send_reply"),
             patch.object(message_handler, "_update_batch_message"),
         ):
-            message_handler.handle_remove_voter(message, "remove voter Alice, Charlie")
+            message_handler.handle_remove_voter(message, "remove Alice, Charlie")
 
         # Verify removals
         final_voters = db_manager.get_batch_voters(active_batch_with_voters)
@@ -464,7 +464,7 @@ class TestMultiVoterIntegration:
             ),
             patch.object(message_handler, "_send_reply") as mock_reply,
         ):
-            message_handler.handle_add_voter(message, "add voter Charlie")
+            message_handler.handle_add_voter(message, "add Charlie")
 
             mock_reply.assert_called_once()
             response = mock_reply.call_args[0][1]

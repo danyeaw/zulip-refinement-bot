@@ -285,19 +285,19 @@ class MessageHandler(MessageHandlerInterface):
     def handle_add_voter(self, message: dict[str, Any], content: str) -> None:
         """Handle add voter command with support for multiple voters."""
         try:
-            parts = content.split(maxsplit=2)
-            if len(parts) < 3:
+            parts = content.split(maxsplit=1)
+            if len(parts) < 2:
                 self._send_reply(
                     message,
                     "❌ Please specify voter name(s). Format:\n"
-                    "• `add voter John Doe`\n"
-                    "• `add voter @**username**`\n"
-                    "• `add voter John Doe, Jane Smith, @**bob**`\n"
-                    "• `add voter Alice and Bob`",
+                    "• `add John Doe`\n"
+                    "• `add @**username**`\n"
+                    "• `add John Doe, Jane Smith, @**bob**`\n"
+                    "• `add Alice and Bob`",
                 )
                 return
 
-            voter_names = self._parse_voter_names(parts[2])
+            voter_names = self._parse_voter_names(parts[1])
             if not voter_names:
                 self._send_reply(message, "❌ No valid voter names found.")
                 return
@@ -353,19 +353,19 @@ class MessageHandler(MessageHandlerInterface):
     def handle_remove_voter(self, message: dict[str, Any], content: str) -> None:
         """Handle remove voter command with support for multiple voters."""
         try:
-            parts = content.split(maxsplit=2)
-            if len(parts) < 3:
+            parts = content.split(maxsplit=1)
+            if len(parts) < 2:
                 self._send_reply(
                     message,
                     "❌ Please specify voter name(s). Format:\n"
-                    "• `remove voter John Doe`\n"
-                    "• `remove voter @**username**`\n"
-                    "• `remove voter John Doe, Jane Smith, @**bob**`\n"
-                    "• `remove voter Alice and Bob`",
+                    "• `remove John Doe`\n"
+                    "• `remove @**username**`\n"
+                    "• `remove John Doe, Jane Smith, @**bob**`\n"
+                    "• `remove Alice and Bob`",
                 )
                 return
 
-            voter_names = self._parse_voter_names(parts[2])
+            voter_names = self._parse_voter_names(parts[1])
             if not voter_names:
                 self._send_reply(message, "❌ No valid voter names found.")
                 return

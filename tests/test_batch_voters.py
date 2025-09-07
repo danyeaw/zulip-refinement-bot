@@ -308,7 +308,7 @@ class TestBatchMessageUpdates:
 
         # Test message
         message = {"sender_full_name": "Test User"}
-        content = "add voter @**newuser**"
+        content = "add @**newuser**"
 
         # Mock the methods using patch
         with (
@@ -356,7 +356,7 @@ class TestBatchMessageUpdates:
 
         # Test message
         message = {"sender_full_name": "Test User"}
-        content = "remove voter @**olduser**"
+        content = "remove @**olduser**"
 
         # Mock the methods using patch
         with (
@@ -406,7 +406,7 @@ class TestBatchMessageUpdates:
 
         # Test message
         message = {"sender_full_name": "Test User"}
-        content = "add voter existing_user"
+        content = "add existing_user"
 
         # Mock the methods using patch
         with (
