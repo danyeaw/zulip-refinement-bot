@@ -136,6 +136,8 @@ class RefinementBot:
                 self.message_handler.handle_add_voter(message, content)
             elif content.lower().startswith("remove voter"):
                 self.message_handler.handle_remove_voter(message, content)
+            elif content.lower().startswith("discussion complete"):
+                self.message_handler.handle_discussion_complete(message, content)
             else:
                 # Check if it's a vote format
                 if self.message_handler.is_vote_format(content):

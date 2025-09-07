@@ -5,7 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
-from .models import BatchData, EstimationVote, IssueData, ParseResult
+from .models import BatchData, EstimationVote, FinalEstimate, IssueData, ParseResult
 
 
 class GitHubAPIInterface(ABC):
@@ -64,6 +64,17 @@ class DatabaseInterface(ABC):
     @abstractmethod
     def remove_voter_from_batch(self, batch_id: int, voter: str) -> bool: ...
 
+    @abstractmethod
+    def set_batch_discussing(self, batch_id: int) -> None: ...
+
+    @abstractmethod
+    def store_final_estimate(
+        self, batch_id: int, issue_number: str, final_points: int, rationale: str
+    ) -> None: ...
+
+    @abstractmethod
+    def get_final_estimates(self, batch_id: int) -> list[FinalEstimate]: ...
+
 
 class ParserInterface(ABC):
     """Interface for input parsing operations."""
@@ -120,3 +131,6 @@ class MessageHandlerInterface(ABC):
 
     @abstractmethod
     def handle_remove_voter(self, message: dict[str, Any], content: str) -> None: ...
+
+    @abstractmethod
+    def handle_discussion_complete(self, message: dict[str, Any], content: str) -> None: ...

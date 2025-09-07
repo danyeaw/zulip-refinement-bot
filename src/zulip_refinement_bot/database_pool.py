@@ -6,6 +6,7 @@ import sqlite3
 import threading
 from collections.abc import Generator
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 from queue import Empty, Queue
 
@@ -13,7 +14,7 @@ import structlog
 
 from .exceptions import DatabaseError
 from .interfaces import DatabaseInterface
-from .models import BatchData, EstimationVote, IssueData
+from .models import BatchData, EstimationVote, FinalEstimate, IssueData
 
 logger = structlog.get_logger(__name__)
 
@@ -190,7 +191,8 @@ class DatabasePool(DatabaseInterface):
         with self._get_connection() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
-                "SELECT * FROM batches WHERE status = 'active' ORDER BY created_at DESC LIMIT 1"
+                "SELECT * FROM batches WHERE status IN ('active', 'discussing') "
+                "ORDER BY created_at DESC LIMIT 1"
             )
             row = cursor.fetchone()
 
@@ -277,6 +279,107 @@ class DatabasePool(DatabaseInterface):
             conn.commit()
 
         logger.info("Batch completed", batch_id=batch_id)
+
+    def set_batch_discussing(self, batch_id: int) -> None:
+        """Set batch status to discussing.
+
+        Args:
+            batch_id: ID of the batch to update
+        """
+        with self._get_connection() as conn:
+            conn.execute("UPDATE batches SET status = 'discussing' WHERE id = ?", (batch_id,))
+            conn.commit()
+
+        logger.info("Batch set to discussing", batch_id=batch_id)
+
+    def store_final_estimate(
+        self, batch_id: int, issue_number: str, final_points: int, rationale: str
+    ) -> None:
+        """Store a final estimate for an issue after discussion.
+
+        Args:
+            batch_id: ID of the batch
+            issue_number: Issue number
+            final_points: Final agreed story points
+            rationale: Brief rationale for the estimate
+        """
+        try:
+            with self._get_connection() as conn:
+                # Create final_estimates table if it doesn't exist
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS final_estimates (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        batch_id INTEGER NOT NULL,
+                        issue_number TEXT NOT NULL,
+                        final_points INTEGER NOT NULL,
+                        rationale TEXT DEFAULT '',
+                        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (batch_id) REFERENCES batches (id),
+                        UNIQUE(batch_id, issue_number)
+                    )
+                """)
+
+                # Insert or replace the final estimate
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO final_estimates
+                    (batch_id, issue_number, final_points, rationale, timestamp)
+                    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """,
+                    (batch_id, issue_number, final_points, rationale),
+                )
+
+                conn.commit()
+                logger.info(
+                    "Final estimate stored",
+                    batch_id=batch_id,
+                    issue_number=issue_number,
+                    final_points=final_points,
+                )
+
+        except sqlite3.Error as e:
+            logger.error("Error storing final estimate", error=str(e))
+            raise
+
+    def get_final_estimates(self, batch_id: int) -> list[FinalEstimate]:
+        """Get all final estimates for a batch.
+
+        Args:
+            batch_id: ID of the batch
+
+        Returns:
+            List of final estimates
+        """
+
+        try:
+            with self._get_connection() as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute(
+                    """
+                    SELECT issue_number, final_points, rationale, timestamp
+                    FROM final_estimates
+                    WHERE batch_id = ?
+                    ORDER BY issue_number
+                """,
+                    (batch_id,),
+                )
+
+                final_estimates = []
+                for row in cursor.fetchall():
+                    final_estimates.append(
+                        FinalEstimate(
+                            issue_number=row["issue_number"],
+                            final_points=row["final_points"],
+                            rationale=row["rationale"] or "",
+                            timestamp=datetime.fromisoformat(row["timestamp"]),
+                        )
+                    )
+
+                return final_estimates
+
+        except sqlite3.Error as e:
+            logger.error("Error getting final estimates", error=str(e))
+            return []
 
     def upsert_vote(
         self, batch_id: int, voter: str, issue_number: str, points: int

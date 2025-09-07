@@ -22,7 +22,9 @@ class BatchData(BaseModel):
     date: str = Field(..., description="Batch date (YYYY-MM-DD)")
     deadline: str = Field(..., description="Deadline in ISO format")
     facilitator: str = Field(..., description="Batch facilitator name")
-    status: str = Field(default="active", description="Batch status")
+    status: str = Field(
+        default="active", description="Batch status"
+    )  # active, discussing, completed, cancelled
     message_id: int | None = Field(
         None, description="Zulip message ID of the batch refinement message"
     )
@@ -57,12 +59,26 @@ class EstimationVote(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.utcnow, description="Vote timestamp")
 
 
+class FinalEstimate(BaseModel):
+    """Represents a final estimate for an issue after discussion."""
+
+    issue_number: str = Field(..., description="Issue number")
+    final_points: int = Field(..., description="Final agreed story points")
+    rationale: str = Field(default="", description="Brief rationale for the estimate")
+    timestamp: datetime = Field(
+        default_factory=datetime.utcnow, description="When estimate was finalized"
+    )
+
+
 class BatchResults(BaseModel):
     """Results of a completed batch."""
 
     batch_id: int = Field(..., description="Batch ID")
     votes: list[EstimationVote] = Field(..., description="All votes")
     consensus: dict[str, int] = Field(..., description="Consensus estimates per issue")
+    final_estimates: dict[str, int] = Field(
+        default_factory=dict, description="Final estimates after discussion"
+    )
     completed_at: datetime = Field(
         default_factory=datetime.utcnow, description="Completion timestamp"
     )

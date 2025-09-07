@@ -13,6 +13,8 @@ A Zulip bot for batch story point estimation workflows. Fetches GitHub issues, m
 - Batch estimation sessions with configurable deadlines
 - Fibonacci story point validation
 - Automated consensus analysis and reporting
+- **Discussion phase for disputed estimates** - automatically triggered when consensus isn't reached
+- **Discussion complete workflow** - facilitator can finalize estimates after team discussion
 - Docker deployment support
 - Full type safety and test coverage
 
@@ -77,6 +79,7 @@ DATABASE_PATH=./data/refinement.db
 - `status` - Show active batch info
 - `cancel` - Cancel active batch (facilitator only)
 - `complete` - Complete active batch (facilitator only)
+- `discussion complete #issue: points rationale, #issue: points rationale` - Complete discussion phase with final estimates (facilitator only)
 - `list voters` - Show voters for active batch
 - `add voter Name` - Add voter to active batch
 - `remove voter Name` - Remove voter from active batch
@@ -116,12 +119,25 @@ remove voter @**jaimergp** # Remove using Zulip mention format
 
 New voters are automatically added if they submit votes but aren't on the list.
 
+### Discussion Phase
+
+When voting completes, the bot analyzes results:
+
+- **Consensus reached**: Issues with clear agreement are finalized automatically
+- **Discussion needed**: Issues with wide spread or mixed clusters trigger discussion phase
+
+During discussion phase:
+1. Team discusses disputed estimates in the stream
+2. Facilitator finalizes estimates using: `discussion complete #15169: 5 After discussion we agreed it's medium complexity, #15168: 8 More complex than expected`
+3. Bot posts final results with rationale
+
 ### Rules
 
 - Maximum 6 issues per batch
 - Only one active batch at a time
 - 48-hour default deadline
 - All voters must vote on all issues
+- Discussion phase automatically triggered when consensus isn't reached
 
 ## Architecture
 

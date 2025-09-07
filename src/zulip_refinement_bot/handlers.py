@@ -13,7 +13,7 @@ from .business_hours import BusinessHoursCalculator
 from .config import Config
 from .exceptions import AuthorizationError, BatchError, ValidationError, VotingError
 from .interfaces import MessageHandlerInterface, ZulipClientInterface
-from .models import BatchData, IssueData
+from .models import BatchData, FinalEstimate, IssueData
 from .services import BatchService, ResultsService, VotingService
 
 logger = structlog.get_logger(__name__)
@@ -317,6 +317,89 @@ class MessageHandler(MessageHandlerInterface):
             logger.error("Error removing voter", error=str(e))
             self._send_reply(message, "❌ Error removing voter. Please try again.")
 
+    def handle_discussion_complete(self, message: dict[str, Any], content: str) -> None:
+        """Handle discussion complete command with final estimates.
+
+        Expected format: discussion complete #issue1: points rationale, #issue2: points rationale
+        """
+        try:
+            active_batch = self.batch_service.get_active_batch()
+            if not active_batch or not active_batch.id:
+                self._send_reply(message, "❌ No active batch found.")
+                return
+
+            if active_batch.status != "discussing":
+                self._send_reply(
+                    message,
+                    f"❌ Batch is not in discussion phase (current: {active_batch.status}).",
+                )
+                return
+
+            requester = message["sender_full_name"]
+
+            # Parse the final estimates from the content
+            final_estimates = self._parse_discussion_complete_input(content)
+
+            if not final_estimates:
+                self._send_reply(
+                    message,
+                    "❌ No valid final estimates found. Please use format:\n"
+                    "`discussion complete #1234: 5 rationale here, #1235: 8 another rationale`",
+                )
+                return
+
+            # Complete the discussion phase
+            completed_batch = self.batch_service.complete_discussion_phase(
+                active_batch.id, requester, final_estimates
+            )
+
+            # Generate and post final results
+            self._post_discussion_complete_results(completed_batch, final_estimates)
+
+            self._send_reply(
+                message,
+                "✅ Discussion phase completed successfully. Final results posted to the stream.",
+            )
+
+        except (BatchError, AuthorizationError, ValidationError) as e:
+            self._send_reply(message, f"❌ {e.message}")
+        except Exception as e:
+            logger.error("Error handling discussion complete", error=str(e))
+            self._send_reply(message, "❌ Error completing discussion. Please try again.")
+
+    def _parse_discussion_complete_input(self, content: str) -> dict[str, tuple[int, str]]:
+        """Parse discussion complete input into final estimates.
+
+        Args:
+            content: Input like "discussion complete #1234: 5 rationale, #1235: 8 rationale"
+
+        Returns:
+            Dict of issue_number -> (points, rationale)
+        """
+        import re
+
+        # Remove the "discussion complete" prefix
+        content = content.replace("discussion complete", "").strip()
+
+        # Pattern to match #issue: points rationale
+        pattern = r"#(\d+):\s*(\d+)\s*([^,#]*?)(?=,\s*#|\s*$)"
+        matches = re.findall(pattern, content)
+
+        final_estimates = {}
+        valid_points = {1, 2, 3, 5, 8, 13, 21}
+
+        for issue_num, points_str, rationale in matches:
+            try:
+                points = int(points_str)
+                if points in valid_points:
+                    final_estimates[issue_num] = (points, rationale.strip())
+                else:
+                    logger.warning(f"Invalid story points: {points} for issue {issue_num}")
+            except ValueError:
+                logger.warning(f"Could not parse points for issue {issue_num}: {points_str}")
+
+        return final_estimates
+
     def is_vote_format(self, content: str) -> bool:
         """Check if content looks like a vote submission.
 
@@ -588,19 +671,53 @@ Posting to #{self.config.stream_name} now..."""
             votes = self.voting_service.get_batch_votes(batch.id)
             vote_count, total_voters, _ = self.voting_service.check_completion_status(batch.id)
 
-            # Update original message status
-            self._update_batch_completion_status(batch, vote_count, total_voters, auto_completed)
-
-            # Generate and post results
-            self._post_estimation_results(batch, votes, vote_count, total_voters)
-
-            logger.info(
-                "Batch completion processed successfully",
-                batch_id=batch.id,
-                vote_count=vote_count,
-                total_voters=total_voters,
-                auto_completed=auto_completed,
+            # Generate and post initial results
+            results_content = self.results_service.generate_results_content(
+                batch,
+                votes,
+                vote_count,
+                total_voters,
+                self.batch_service.database.get_batch_voters(batch.id),
             )
+
+            # Check if there are discussion issues
+            has_discussion_issues = "⚠️ **DISCUSSION NEEDED**" in results_content
+
+            if has_discussion_issues:
+                # Move to discussion phase instead of completing
+                self.batch_service.start_discussion_phase(batch.id, batch.facilitator)
+
+                # Update original message to show discussion phase
+                self._update_batch_discussion_status(batch, vote_count, total_voters)
+
+                # Post initial results with discussion items
+                self._post_estimation_results(batch, votes, vote_count, total_voters)
+
+                logger.info(
+                    "Batch moved to discussion phase",
+                    batch_id=batch.id,
+                    vote_count=vote_count,
+                    total_voters=total_voters,
+                )
+            else:
+                # All consensus - complete normally
+                self.batch_service.complete_batch(batch.id, batch.facilitator)
+
+                # Update original message status
+                self._update_batch_completion_status(
+                    batch, vote_count, total_voters, auto_completed
+                )
+
+                # Post final results
+                self._post_estimation_results(batch, votes, vote_count, total_voters)
+
+                logger.info(
+                    "Batch completion processed successfully",
+                    batch_id=batch.id,
+                    vote_count=vote_count,
+                    total_voters=total_voters,
+                    auto_completed=auto_completed,
+                )
 
         except Exception as e:
             logger.error("Error processing batch completion", batch_id=batch.id, error=str(e))
@@ -699,6 +816,209 @@ Posting to #{self.config.stream_name} now..."""
 
         except Exception as e:
             logger.error("Error updating batch completion status", batch_id=batch.id, error=str(e))
+
+    def _update_batch_discussion_status(
+        self, batch: BatchData, vote_count: int, total_voters: int
+    ) -> None:
+        """Update the original batch message to show discussion phase status.
+
+        Args:
+            batch: The batch data
+            vote_count: Number of voters who submitted votes
+            total_voters: Total number of expected voters
+        """
+        if not batch.message_id:
+            logger.warning("Cannot update discussion status: no message ID", batch_id=batch.id)
+            return
+
+        try:
+            deadline = datetime.fromisoformat(batch.deadline)
+            issue_list = "\n".join(
+                [
+                    f"• #{issue.issue_number} - " + f"[{issue.title}]({issue.url})"
+                    if issue.url
+                    else f"{issue.title}"
+                    for issue in batch.issues
+                ]
+            )
+
+            voter_mentions = ", ".join([f"@**{voter}**" for voter in self.config.voter_list])
+
+            # Create example format string
+            example_issues = [
+                batch.issues[0].issue_number,
+                (
+                    batch.issues[1].issue_number
+                    if len(batch.issues) > 1
+                    else batch.issues[0].issue_number
+                ),
+                (
+                    batch.issues[2].issue_number
+                    if len(batch.issues) > 2
+                    else batch.issues[0].issue_number
+                ),
+            ]
+            example_format = (
+                f"#{example_issues[0]}: 5, #{example_issues[1]}: 8, #{example_issues[2]}: 3"
+            )
+
+            deadline_str = self.business_hours_calc.format_business_deadline(deadline)
+            hours_text = f"({self.config.default_deadline_hours} hours from now)"
+
+            discussion_content = f"""**📦 BATCH REFINEMENT - DISCUSSION PHASE** 🗣️
+**Stories**:
+{issue_list}
+
+**Deadline**: {deadline_str} {hours_text}
+**Facilitator**: @**{batch.facilitator}**
+
+**How to estimate**:
+1. Review issues in GitHub
+2. Consider complexity, unknowns, dependencies for each
+3. DM @**Refinement Bot** your story point estimates in this format:
+   `{example_format}`
+4. Use scale: 1, 2, 3, 5, 8, 13, 21
+
+**Voters needed**: {voter_mentions}
+
+**Status**: 🗣️ Discussion phase - some issues need clarification ({vote_count}/{total_voters} votes received)
+
+*Initial results posted below - discussion needed for some items*"""
+
+            edit_response = self.zulip_client.update_message(
+                {
+                    "message_id": batch.message_id,
+                    "content": discussion_content,
+                }
+            )
+
+            if edit_response.get("result") == "success":
+                logger.info(
+                    "Updated batch message with discussion status",
+                    batch_id=batch.id,
+                    message_id=batch.message_id,
+                )
+            else:
+                logger.error(
+                    "Failed to update batch discussion status",
+                    batch_id=batch.id,
+                    response=edit_response,
+                )
+
+        except Exception as e:
+            logger.error("Error updating batch discussion status", batch_id=batch.id, error=str(e))
+
+    def _post_discussion_complete_results(
+        self, batch: BatchData, final_estimates_input: dict[str, tuple[int, str]]
+    ) -> None:
+        """Post final results after discussion is complete.
+
+        Args:
+            batch: Batch data
+            final_estimates_input: Dict of issue_number -> (points, rationale)
+        """
+        try:
+            if not batch.id:
+                logger.error("Cannot post discussion results: batch ID is None")
+                return
+
+            # Get consensus estimates from original voting
+            votes = self.voting_service.get_batch_votes(batch.id)
+
+            # Analyze original votes to get consensus items
+            consensus_estimates = self._extract_consensus_estimates(batch, votes)
+
+            # Convert final estimates input to FinalEstimate objects
+            final_estimates = [
+                FinalEstimate(issue_number=issue_num, final_points=points, rationale=rationale)
+                for issue_num, (points, rationale) in final_estimates_input.items()
+            ]
+
+            # Generate final results content
+            results_content = self.results_service.generate_discussion_complete_results(
+                batch, consensus_estimates, final_estimates
+            )
+
+            # Post to the same topic
+            topic_name = f"Refinement: {batch.date} ({len(batch.issues)} issues)"
+
+            response = self.zulip_client.send_message(
+                {
+                    "type": "stream",
+                    "to": self.config.stream_name,
+                    "topic": topic_name,
+                    "content": results_content,
+                }
+            )
+
+            if response.get("result") == "success":
+                logger.info(
+                    "Posted discussion complete results",
+                    batch_id=batch.id,
+                    topic=topic_name,
+                )
+            else:
+                logger.error(
+                    "Failed to post discussion complete results",
+                    batch_id=batch.id,
+                    response=response,
+                )
+
+        except Exception as e:
+            logger.error(
+                "Error posting discussion complete results", batch_id=batch.id, error=str(e)
+            )
+
+    def _extract_consensus_estimates(self, batch: BatchData, votes: list) -> dict[str, int]:
+        """Extract consensus estimates from original votes.
+
+        Args:
+            batch: Batch data
+            votes: All votes for the batch
+
+        Returns:
+            Dict of issue_number -> consensus_points for issues that had consensus
+        """
+        from collections import Counter
+
+        # Group votes by issue
+        votes_by_issue: dict[str, list] = {}
+        for vote in votes:
+            if vote.issue_number not in votes_by_issue:
+                votes_by_issue[vote.issue_number] = []
+            votes_by_issue[vote.issue_number].append(vote)
+
+        consensus_estimates = {}
+
+        # Process each issue to find consensus
+        for issue in batch.issues:
+            issue_votes = votes_by_issue.get(issue.issue_number, [])
+            if not issue_votes:
+                continue
+
+            estimates = [vote.points for vote in issue_votes]
+            estimates.sort()
+
+            # Analyze consensus
+            estimate_counts = Counter(estimates)
+            most_common = estimate_counts.most_common()
+
+            # Determine if there was consensus
+            if len(most_common) == 1:
+                # Perfect consensus
+                consensus_estimates[issue.issue_number] = most_common[0][0]
+            elif len(estimates) >= 3:
+                # Check for clustering
+                clusters = self.results_service._find_clusters(sorted(estimates))
+
+                if len(clusters) == 1 and len(clusters[0]) >= len(estimates) * 0.6:
+                    # Strong cluster consensus
+                    cluster = clusters[0]
+                    consensus_estimates[issue.issue_number] = max(
+                        cluster
+                    )  # Take highest in cluster for safety
+
+        return consensus_estimates
 
     def _post_estimation_results(
         self, batch: BatchData, votes: list, vote_count: int, total_voters: int

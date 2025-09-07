@@ -11,7 +11,7 @@ from .business_hours import BusinessHoursCalculator
 from .config import Config
 from .exceptions import AuthorizationError, BatchError, ValidationError, VotingError
 from .interfaces import DatabaseInterface, GitHubAPIInterface, ParserInterface
-from .models import BatchData, EstimationVote, IssueData
+from .models import BatchData, EstimationVote, FinalEstimate, IssueData
 
 logger = structlog.get_logger(__name__)
 
@@ -134,6 +134,91 @@ class BatchService:
         self.database.complete_batch(batch_id)
         logger.info("Batch completed", batch_id=batch_id, requester=requester)
 
+        return active_batch
+
+    def start_discussion_phase(self, batch_id: int, requester: str) -> BatchData:
+        """Start the discussion phase for a batch.
+
+        Args:
+            batch_id: ID of the batch to move to discussion phase
+            requester: Name of the person requesting the transition
+
+        Returns:
+            The updated batch data
+
+        Raises:
+            BatchError: If no active batch exists or batch is not in correct state
+            AuthorizationError: If requester is not the facilitator
+        """
+        active_batch = self.database.get_active_batch()
+        if not active_batch:
+            raise BatchError("No active batch found.")
+
+        if requester != active_batch.facilitator:
+            raise AuthorizationError(
+                f"Only the facilitator ({active_batch.facilitator}) can start discussion phase."
+            )
+
+        if active_batch.id != batch_id:
+            raise BatchError("Batch ID mismatch.")
+
+        if active_batch.status != "active":
+            raise BatchError(f"Batch is not in active state (current: {active_batch.status}).")
+
+        self.database.set_batch_discussing(batch_id)
+        logger.info("Batch moved to discussion phase", batch_id=batch_id, requester=requester)
+
+        # Update the batch status locally
+        active_batch.status = "discussing"
+        return active_batch
+
+    def complete_discussion_phase(
+        self, batch_id: int, requester: str, final_estimates: dict[str, tuple[int, str]]
+    ) -> BatchData:
+        """Complete the discussion phase with final estimates.
+
+        Args:
+            batch_id: ID of the batch to complete discussion for
+            requester: Name of the person requesting completion
+            final_estimates: Dict of issue_number -> (final_points, rationale)
+
+        Returns:
+            The completed batch data
+
+        Raises:
+            BatchError: If no discussing batch exists
+            AuthorizationError: If requester is not the facilitator
+        """
+        active_batch = self.database.get_active_batch()
+        if not active_batch:
+            raise BatchError("No active batch found.")
+
+        if requester != active_batch.facilitator:
+            raise AuthorizationError(
+                f"Only the facilitator ({active_batch.facilitator}) can complete discussion phase."
+            )
+
+        if active_batch.id != batch_id:
+            raise BatchError("Batch ID mismatch.")
+
+        if active_batch.status != "discussing":
+            raise BatchError(f"Batch is not in discussion phase (current: {active_batch.status}).")
+
+        # Store final estimates
+        for issue_number, (final_points, rationale) in final_estimates.items():
+            self.database.store_final_estimate(batch_id, issue_number, final_points, rationale)
+
+        # Complete the batch
+        self.database.complete_batch(batch_id)
+        logger.info(
+            "Discussion phase completed",
+            batch_id=batch_id,
+            requester=requester,
+            final_estimates_count=len(final_estimates),
+        )
+
+        # Update the batch status locally
+        active_batch.status = "completed"
         return active_batch
 
 
@@ -458,9 +543,64 @@ class ResultsService:
 
         if discussion_issues:
             results_content += (
-                "Next steps: Discussion phase for the disputed stories, "
-                "then re-estimate if needed.\n"
+                "**🗣️ NEXT STEPS**\n"
+                "Discussion phase for the disputed stories. Once discussion is complete, "
+                "the facilitator should use the command:\n"
+                "`discussion complete #issue1: points rationale, #issue2: points rationale`\n\n"
+                "Example: `discussion complete #15116: 5 After discussion we agreed it's medium complexity, #15907: 3 Simple bug fix confirmed`\n"
             )
+
+        return results_content
+
+    def generate_discussion_complete_results(
+        self,
+        batch: BatchData,
+        consensus_estimates: dict[str, int],
+        final_estimates: list[FinalEstimate],
+    ) -> str:
+        """Generate the final results content after discussion is complete.
+
+        Args:
+            batch: Batch data
+            consensus_estimates: Issues that had consensus from initial voting
+            final_estimates: Final estimates after discussion
+
+        Returns:
+            Formatted final results content
+        """
+        results_content = "🎯 **ESTIMATION UPDATE - DISCUSSION COMPLETE**\n\n"
+        results_content += (
+            "Thanks everyone for the thoughtful discussion! Here are the final results:\n\n"
+        )
+        results_content += "**✅ FINAL ESTIMATES**\n\n"
+
+        # Show consensus issues first
+        for issue in batch.issues:
+            issue_num = issue.issue_number
+            if issue_num in consensus_estimates:
+                points = consensus_estimates[issue_num]
+                results_content += f"**Issue {issue_num}** - {issue.title}: **{points} points**\n"
+
+        # Show discussed issues with rationale
+        final_estimates_dict = {est.issue_number: est for est in final_estimates}
+        for issue in batch.issues:
+            issue_num = issue.issue_number
+            if issue_num in final_estimates_dict:
+                est = final_estimates_dict[issue_num]
+                results_content += (
+                    f"**Issue {issue_num}** - {issue.title}: **{est.final_points} points** "
+                )
+                if est.rationale:
+                    results_content += f"({est.rationale})\n"
+                else:
+                    results_content += "(converged after discussion)\n"
+
+        results_content += "\n**📝 ACTIONS**\n"
+        results_content += "- Updating GitHub Projects with story points\n"
+        results_content += "- Removing `needs-refinement` labels\n\n"
+        results_content += "**🙏 THANKS**\n"
+        results_content += "Appreciate the collaborative discussion - the outlier estimates led to valuable conversations!\n\n"
+        results_content += "Next refinement batch coming [insert your next timeline].\n"
 
         return results_content
 
