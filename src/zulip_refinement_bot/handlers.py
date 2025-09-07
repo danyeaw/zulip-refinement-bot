@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import random
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
@@ -559,10 +559,10 @@ class MessageHandler(MessageHandlerInterface):
             ]
         )
 
-        date_str = deadline.strftime("%Y-%m-%d")
+        current_date = datetime.now(UTC).strftime("%Y-%m-%d")
         confirmation = f"""✅ **Batch created: {len(issues)} issues**
 📅 **Deadline**: {self.business_hours_calc.format_business_deadline(deadline)}
-🎯 **Topic**: Refinement: {date_str} ({len(issues)} issues)
+🎯 **Topic**: Refinement: {current_date} ({len(issues)} issues)
 
 **Issues:**
 {issue_list}
@@ -628,8 +628,9 @@ Posting to #{self.config.stream_name} now..."""
 
 *Will reveal results here once all votes are in*"""
 
-        date_str = deadline.strftime("%Y-%m-%d")
-        topic_name = f"Refinement: {date_str} ({len(issues)} issues)"
+        # Use current date for topic name (when refinement starts, not deadline)
+        current_date = datetime.now(UTC).strftime("%Y-%m-%d")
+        topic_name = f"Refinement: {current_date} ({len(issues)} issues)"
 
         try:
             response = self.zulip_client.send_message(
