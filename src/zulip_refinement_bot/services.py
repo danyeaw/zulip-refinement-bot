@@ -25,44 +25,20 @@ class BatchService:
         github_api: GitHubAPIInterface,
         parser: ParserInterface,
     ) -> None:
-        """Initialize batch service.
-
-        Args:
-            config: Bot configuration
-            database: Database interface
-            github_api: GitHub API interface
-            parser: Parser interface
-        """
         self.config = config
         self.database = database
         self.github_api = github_api
         self.parser = parser
 
     def create_batch(self, content: str, facilitator: str) -> tuple[int, list[IssueData], datetime]:
-        """Create a new batch from input content.
-
-        Args:
-            content: Raw batch input content
-            facilitator: Name of the batch facilitator
-
-        Returns:
-            Tuple of (batch_id, issues, deadline)
-
-        Raises:
-            BatchError: If there's already an active batch
-            ValidationError: If input validation fails
-        """
-        # Check for existing active batch
+        """Create a new batch from input content."""
         active_batch = self.database.get_active_batch()
         if active_batch:
             raise BatchError("Active batch already running. Use 'status' to check progress.")
 
-        # Parse and validate input
         parse_result = self.parser.parse_batch_input(content)
         if not parse_result.success:
             raise ValidationError(parse_result.error)
-
-        # Create batch
         now = datetime.now(UTC)
         date_str = now.strftime("%Y-%m-%d")
         deadline = now + timedelta(hours=self.config.default_deadline_hours)

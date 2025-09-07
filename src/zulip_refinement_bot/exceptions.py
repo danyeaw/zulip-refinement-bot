@@ -7,12 +7,6 @@ class RefinementBotError(Exception):
     """Base exception for all refinement bot errors."""
 
     def __init__(self, message: str, details: dict[str, str] | None = None) -> None:
-        """Initialize the exception.
-
-        Args:
-            message: Human-readable error message
-            details: Optional additional error details
-        """
         super().__init__(message)
         self.message = message
         self.details = details or {}
