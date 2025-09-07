@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from collections import Counter
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 import structlog
 
+from .business_hours import BusinessHoursCalculator
 from .config import Config
 from .exceptions import AuthorizationError, BatchError, ValidationError, VotingError
 from .interfaces import DatabaseInterface, GitHubAPIInterface, ParserInterface
@@ -29,6 +30,7 @@ class BatchService:
         self.database = database
         self.github_api = github_api
         self.parser = parser
+        self.business_hours_calc = BusinessHoursCalculator(config)
 
     def create_batch(self, content: str, facilitator: str) -> tuple[int, list[IssueData], datetime]:
         """Create a new batch from input content."""
@@ -41,7 +43,11 @@ class BatchService:
             raise ValidationError(parse_result.error)
         now = datetime.now(UTC)
         date_str = now.strftime("%Y-%m-%d")
-        deadline = now + timedelta(hours=self.config.default_deadline_hours)
+
+        # Calculate deadline using business hours if enabled
+        deadline = self.business_hours_calc.add_business_hours(
+            now, self.config.default_deadline_hours
+        )
         deadline_str = deadline.isoformat()
 
         try:

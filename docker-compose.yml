@@ -21,6 +21,8 @@ services:
       - MAX_ISSUES_PER_BATCH=${MAX_ISSUES_PER_BATCH:-6}
       - MAX_TITLE_LENGTH=${MAX_TITLE_LENGTH:-50}
       - GITHUB_TIMEOUT=${GITHUB_TIMEOUT:-10.0}
+      - HOLIDAY_COUNTRY=${HOLIDAY_COUNTRY:-US}
+      - CUSTOM_HOLIDAYS=${CUSTOM_HOLIDAYS:-}
 
     # Persistent volume for database
     volumes:

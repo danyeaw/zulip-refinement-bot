@@ -23,6 +23,10 @@ class Config(BaseSettings):
     max_issues_per_batch: int = 6
     max_title_length: int = 50
 
+    # Holiday configuration
+    holiday_country: str = "US"
+    custom_holidays: str = ""
+
     _default_voters: ClassVar[list[str]] = [
         "jaimergp",
         "Jannis Leidel",
@@ -55,6 +59,13 @@ class Config(BaseSettings):
     def voter_list(self) -> list[str]:
         """Parse comma-separated voter list from environment variable."""
         return [voter.strip() for voter in self.voter_list_str.split(",") if voter.strip()]
+
+    @computed_field  # type: ignore[misc]
+    def custom_holiday_dates(self) -> list[str]:
+        """Parse comma-separated custom holiday dates."""
+        if not self.custom_holidays.strip():
+            return []
+        return [date.strip() for date in self.custom_holidays.split(",") if date.strip()]
 
     def __init__(self, **kwargs: Any) -> None:
         """Initialize configuration and ensure database directory exists."""

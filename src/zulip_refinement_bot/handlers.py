@@ -8,6 +8,7 @@ from typing import Any
 
 import structlog
 
+from .business_hours import BusinessHoursCalculator
 from .config import Config
 from .exceptions import AuthorizationError, BatchError, ValidationError, VotingError
 from .interfaces import MessageHandlerInterface, ZulipClientInterface
@@ -42,6 +43,7 @@ class MessageHandler(MessageHandlerInterface):
         self.batch_service = batch_service
         self.voting_service = voting_service
         self.results_service = results_service
+        self.business_hours_calc = BusinessHoursCalculator(config)
 
     def handle_start_batch(self, message: dict[str, Any], content: str) -> None:
         """Handle batch creation request.
@@ -91,7 +93,7 @@ class MessageHandler(MessageHandlerInterface):
             status_msg = f"""**📊 Active Batch Status**
 **Date**: {active_batch.date}
 **Facilitator**: {active_batch.facilitator}
-**Deadline**: {deadline.strftime("%Y-%m-%d %H:%M UTC")}
+**Deadline**: {self.business_hours_calc.format_business_deadline(deadline)}
 **Issues** ({len(active_batch.issues)}):
 {issue_list}
 
@@ -262,7 +264,7 @@ class MessageHandler(MessageHandlerInterface):
 
         date_str = deadline.strftime("%Y-%m-%d")
         confirmation = f"""✅ **Batch created: {len(issues)} issues**
-📅 **Deadline**: {deadline.strftime("%Y-%m-%d %H:%M UTC")}
+📅 **Deadline**: {self.business_hours_calc.format_business_deadline(deadline)}
 🎯 **Topic**: Refinement: {date_str} ({len(issues)} issues)
 
 **Issues:**
@@ -308,7 +310,7 @@ Posting to #{self.config.stream_name} now..."""
             f"#{example_issues[0]}: 5, #{example_issues[1]}: 8, #{example_issues[2]}: 3"
         )
 
-        deadline_str = deadline.strftime("%Y-%m-%d %H:%M UTC")
+        deadline_str = self.business_hours_calc.format_business_deadline(deadline)
         hours_text = f"({self.config.default_deadline_hours} hours from now)"
 
         topic_content = f"""**📦 BATCH REFINEMENT**
@@ -410,7 +412,7 @@ Posting to #{self.config.stream_name} now..."""
                 f"#{example_issues[0]}: 5, #{example_issues[1]}: 8, #{example_issues[2]}: 3"
             )
 
-            deadline_str = deadline.strftime("%Y-%m-%d %H:%M UTC")
+            deadline_str = self.business_hours_calc.format_business_deadline(deadline)
             hours_text = f"({self.config.default_deadline_hours} hours from now)"
 
             topic_content = f"""**📦 BATCH REFINEMENT**
@@ -540,7 +542,7 @@ Posting to #{self.config.stream_name} now..."""
                 f"#{example_issues[0]}: 5, #{example_issues[1]}: 8, #{example_issues[2]}: 3"
             )
 
-            deadline_str = deadline.strftime("%Y-%m-%d %H:%M UTC")
+            deadline_str = self.business_hours_calc.format_business_deadline(deadline)
             hours_text = f"({self.config.default_deadline_hours} hours from now)"
 
             completed_content = f"""**📦 BATCH REFINEMENT - COMPLETED** ({completion_reason})
