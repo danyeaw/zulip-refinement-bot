@@ -166,7 +166,10 @@ ignore = [
 "__init__.py" = ["F401"]
 "tests/*" = ["B011"]
 "src/zulip_refinement_bot/bot.py" = ["E501"]
+"src/zulip_refinement_bot/bot_original.py" = ["E501"]
 "src/zulip_refinement_bot/github_api.py" = ["E501"]
+"src/zulip_refinement_bot/handlers.py" = ["E501"]
+"src/zulip_refinement_bot/services.py" = ["E501"]
 
 [tool.ruff.format]
 quote-style = "double"

@@ -10,7 +10,9 @@ from unittest.mock import MagicMock
 import pytest
 
 from zulip_refinement_bot.config import Config
+from zulip_refinement_bot.container import Container
 from zulip_refinement_bot.database import DatabaseManager
+from zulip_refinement_bot.database_pool import DatabasePool
 from zulip_refinement_bot.github_api import GitHubAPI
 
 
@@ -44,6 +46,18 @@ def test_config(temp_db: Path) -> Config:
 def db_manager(temp_db: Path) -> DatabaseManager:
     """Create a database manager with temporary database."""
     return DatabaseManager(temp_db)
+
+
+@pytest.fixture
+def db_pool(temp_db: Path) -> DatabasePool:
+    """Create a database pool with temporary database."""
+    return DatabasePool(temp_db, pool_size=2)
+
+
+@pytest.fixture
+def container(test_config: Config) -> Container:
+    """Create a dependency injection container for testing."""
+    return Container(test_config)
 
 
 @pytest.fixture

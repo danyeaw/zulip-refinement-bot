@@ -1,35 +1,89 @@
-"""Database management for the Zulip Refinement Bot."""
+"""Database connection pooling for the Zulip Refinement Bot."""
 
 from __future__ import annotations
 
 import sqlite3
+import threading
+from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
+from queue import Empty, Queue
 
 import structlog
 
+from .exceptions import DatabaseError
 from .interfaces import DatabaseInterface
 from .models import BatchData, EstimationVote, IssueData
 
 logger = structlog.get_logger(__name__)
 
 
-class DatabaseManager(DatabaseInterface):
-    """Handles SQLite database operations for batch and issue storage."""
+class DatabasePool(DatabaseInterface):
+    """Database manager with connection pooling for better performance."""
 
-    def __init__(self, db_path: Path):
-        """Initialize database manager.
+    def __init__(self, db_path: Path, pool_size: int = 5) -> None:
+        """Initialize database pool.
 
         Args:
             db_path: Path to the SQLite database file
+            pool_size: Maximum number of connections in the pool
         """
         self.db_path = Path(db_path)
+        self.pool_size = pool_size
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Initialize the connection pool
+        self._pool: Queue[sqlite3.Connection] = Queue(maxsize=pool_size)
+        self._lock = threading.Lock()
+
+        # Create initial connections and initialize database
+        self._init_pool()
         self._init_database()
-        logger.info("Database initialized", db_path=str(self.db_path))
+
+        logger.info("Database pool initialized", db_path=str(self.db_path), pool_size=pool_size)
+
+    def _init_pool(self) -> None:
+        """Initialize the connection pool with connections."""
+        for _ in range(self.pool_size):
+            conn = sqlite3.connect(
+                self.db_path,
+                check_same_thread=False,  # Allow sharing across threads
+                timeout=30.0,  # 30 second timeout
+            )
+            # Enable WAL mode for better concurrency
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
+            conn.execute("PRAGMA temp_store=memory")
+            conn.execute("PRAGMA mmap_size=268435456")  # 256MB
+            self._pool.put(conn)
+
+    @contextmanager
+    def _get_connection(self) -> Generator[sqlite3.Connection, None, None]:
+        """Get a connection from the pool.
+
+        Yields:
+            Database connection
+
+        Raises:
+            DatabaseError: If unable to get connection
+        """
+        conn = None
+        try:
+            # Try to get a connection from the pool
+            conn = self._pool.get(timeout=10.0)
+            yield conn
+        except Empty as e:
+            raise DatabaseError("Unable to get database connection from pool") from e
+        except Exception as e:
+            raise DatabaseError(f"Database connection error: {str(e)}") from e
+        finally:
+            if conn:
+                # Return connection to pool
+                self._pool.put(conn)
 
     def _init_database(self) -> None:
         """Initialize database with required tables."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             # Create batches table
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS batches (
@@ -55,7 +109,7 @@ class DatabaseManager(DatabaseInterface):
                 )
             """)
 
-            # Create votes table for future use
+            # Create votes table
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS votes (
                     id INTEGER PRIMARY KEY,
@@ -89,7 +143,7 @@ class DatabaseManager(DatabaseInterface):
         Returns:
             Active batch data or None if no active batch exists
         """
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 "SELECT * FROM batches WHERE status = 'active' ORDER BY created_at DESC LIMIT 1"
@@ -127,7 +181,7 @@ class DatabaseManager(DatabaseInterface):
         Returns:
             ID of the created batch
         """
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             cursor = conn.execute(
                 "INSERT INTO batches (date, deadline, facilitator) VALUES (?, ?, ?)",
                 (date, deadline, facilitator),
@@ -135,7 +189,7 @@ class DatabaseManager(DatabaseInterface):
             conn.commit()
             batch_id = cursor.lastrowid
             if batch_id is None:
-                raise RuntimeError("Failed to create batch: no ID returned")
+                raise DatabaseError("Failed to create batch: no ID returned")
 
         logger.info("Batch created", batch_id=batch_id, facilitator=facilitator)
         return batch_id
@@ -147,7 +201,7 @@ class DatabaseManager(DatabaseInterface):
             batch_id: ID of the batch to add issues to
             issues: List of issues to add
         """
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             conn.executemany(
                 "INSERT INTO issues (batch_id, issue_number, title, url) VALUES (?, ?, ?, ?)",
                 [(batch_id, issue.issue_number, issue.title, issue.url) for issue in issues],
@@ -156,32 +210,13 @@ class DatabaseManager(DatabaseInterface):
 
         logger.info("Issues added to batch", batch_id=batch_id, issue_count=len(issues))
 
-    def get_batch_issues(self, batch_id: int) -> list[IssueData]:
-        """Get all issues for a batch.
-
-        Args:
-            batch_id: ID of the batch
-
-        Returns:
-            List of issues in the batch
-        """
-        with sqlite3.connect(self.db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            cursor = conn.execute(
-                "SELECT * FROM issues WHERE batch_id = ? ORDER BY id", (batch_id,)
-            )
-            return [
-                IssueData(issue_number=row["issue_number"], title=row["title"], url=row["url"])
-                for row in cursor.fetchall()
-            ]
-
     def cancel_batch(self, batch_id: int) -> None:
         """Cancel an active batch.
 
         Args:
             batch_id: ID of the batch to cancel
         """
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             conn.execute("UPDATE batches SET status = 'cancelled' WHERE id = ?", (batch_id,))
             conn.commit()
 
@@ -193,45 +228,11 @@ class DatabaseManager(DatabaseInterface):
         Args:
             batch_id: ID of the batch to complete
         """
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             conn.execute("UPDATE batches SET status = 'completed' WHERE id = ?", (batch_id,))
             conn.commit()
 
         logger.info("Batch completed", batch_id=batch_id)
-
-    def store_vote(self, batch_id: int, voter: str, issue_number: str, points: int) -> bool:
-        """Store a vote for an issue in a batch.
-
-        Args:
-            batch_id: ID of the batch
-            voter: Name of the voter
-            issue_number: Issue number being voted on
-            points: Story points estimate
-
-        Returns:
-            True if vote was stored successfully, False if it was a duplicate
-        """
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.execute(
-                    "INSERT INTO votes (batch_id, issue_number, voter, points) VALUES (?, ?, ?, ?)",
-                    (batch_id, issue_number, voter, points),
-                )
-                conn.commit()
-                logger.info(
-                    "Vote stored",
-                    batch_id=batch_id,
-                    voter=voter,
-                    issue_number=issue_number,
-                    points=points,
-                )
-                return True
-        except sqlite3.IntegrityError:
-            # Duplicate vote (voter already voted for this issue in this batch)
-            logger.warning(
-                "Duplicate vote attempt", batch_id=batch_id, voter=voter, issue_number=issue_number
-            )
-            return False
 
     def upsert_vote(
         self, batch_id: int, voter: str, issue_number: str, points: int
@@ -246,10 +247,8 @@ class DatabaseManager(DatabaseInterface):
 
         Returns:
             Tuple of (success: bool, was_update: bool)
-            - success: True if vote was stored/updated successfully
-            - was_update: True if this was an update, False if it was a new vote
         """
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             # Check if vote already exists
             cursor = conn.execute(
                 "SELECT points FROM votes WHERE batch_id = ? AND issue_number = ? AND voter = ?",
@@ -300,7 +299,7 @@ class DatabaseManager(DatabaseInterface):
         Returns:
             List of votes for the batch
         """
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 "SELECT * FROM votes WHERE batch_id = ? ORDER BY created_at", (batch_id,)
@@ -324,44 +323,15 @@ class DatabaseManager(DatabaseInterface):
         Returns:
             Number of unique voters
         """
-        with sqlite3.connect(self.db_path) as conn:
-            # First get the actual voter names for debugging
-            debug_cursor = conn.execute(
-                "SELECT DISTINCT voter FROM votes WHERE batch_id = ?", (batch_id,)
-            )
-            voters = [row[0] for row in debug_cursor.fetchall()]
-
+        with self._get_connection() as conn:
             cursor = conn.execute(
                 "SELECT COUNT(DISTINCT voter) FROM votes WHERE batch_id = ?", (batch_id,)
             )
             result = cursor.fetchone()
             count = result[0] if result else 0
 
-            logger.debug(
-                "Vote count query result",
-                batch_id=batch_id,
-                unique_voters=voters,
-                vote_count=count,
-            )
-
+            logger.debug("Vote count query result", batch_id=batch_id, vote_count=count)
             return count
-
-    def has_voter_voted(self, batch_id: int, voter: str) -> bool:
-        """Check if a voter has already submitted votes for a batch.
-
-        Args:
-            batch_id: ID of the batch
-            voter: Name of the voter
-
-        Returns:
-            True if the voter has already voted, False otherwise
-        """
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute(
-                "SELECT COUNT(*) FROM votes WHERE batch_id = ? AND voter = ?", (batch_id, voter)
-            )
-            result = cursor.fetchone()
-            return (result[0] if result else 0) > 0
 
     def update_batch_message_id(self, batch_id: int, message_id: int) -> None:
         """Update the message ID for a batch.
@@ -371,7 +341,7 @@ class DatabaseManager(DatabaseInterface):
             message_id: Zulip message ID of the batch refinement message
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._get_connection() as conn:
                 cursor = conn.execute(
                     "UPDATE batches SET message_id = ? WHERE id = ?", (message_id, batch_id)
                 )
@@ -395,3 +365,14 @@ class DatabaseManager(DatabaseInterface):
                 message_id=message_id,
                 error=str(e),
             )
+
+    def close(self) -> None:
+        """Close all connections in the pool."""
+        logger.info("Closing database connection pool")
+        while not self._pool.empty():
+            try:
+                conn = self._pool.get_nowait()
+                conn.close()
+            except Empty:
+                break
+        logger.info("Database connection pool closed")

@@ -8,12 +8,13 @@ import structlog
 
 from .config import Config
 from .github_api import GitHubAPI
+from .interfaces import ParserInterface
 from .models import IssueData, ParseResult
 
 logger = structlog.get_logger(__name__)
 
 
-class InputParser:
+class InputParser(ParserInterface):
     """Handles parsing and validation of user input."""
 
     GITHUB_URL_PATTERN = re.compile(r"https://github\.com/([^/]+)/([^/]+)/issues/(\d+)")

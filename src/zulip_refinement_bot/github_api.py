@@ -5,10 +5,12 @@ from __future__ import annotations
 import httpx
 import structlog
 
+from .interfaces import GitHubAPIInterface
+
 logger = structlog.get_logger(__name__)
 
 
-class GitHubAPI:
+class GitHubAPI(GitHubAPIInterface):
     """Handles GitHub API interactions to fetch issue information."""
 
     def __init__(self, timeout: float = 10.0):
