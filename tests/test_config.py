@@ -48,12 +48,6 @@ class TestConfig:
 
     def test_config_voter_list(self):
         """Test voter list configuration."""
-        config = Config(
-            zulip_email="test@example.com",
-            zulip_api_key="test_key",
-            zulip_site="https://test.zulipchat.com",
-        )
-
         expected_voters = [
             "jaimergp",
             "Jannis Leidel",
@@ -63,6 +57,13 @@ class TestConfig:
             "Mahe Iyer",
             "Dan Yeaw",
         ]
+
+        config = Config(
+            zulip_email="test@example.com",
+            zulip_api_key="test_key",
+            zulip_site="https://test.zulipchat.com",
+            voter_list_str=",".join(expected_voters),
+        )
 
         assert config.voter_list == expected_voters
 

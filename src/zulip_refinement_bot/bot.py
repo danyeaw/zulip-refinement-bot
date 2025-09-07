@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import threading
 import time
+from collections import Counter
 from datetime import UTC, datetime, timedelta
 from typing import Any, TypedDict, cast
 
@@ -12,7 +14,7 @@ import zulip
 from .config import Config
 from .database import DatabaseManager
 from .github_api import GitHubAPI
-from .models import BatchData, IssueData, MessageData
+from .models import BatchData, EstimationVote, IssueData, MessageData
 from .parser import InputParser
 
 logger = structlog.get_logger(__name__)
@@ -51,6 +53,13 @@ class RefinementBot:
             site=config.zulip_site,
         )
 
+        # Start deadline checker thread
+        self._deadline_checker_running = True
+        self._deadline_checker_thread = threading.Thread(
+            target=self._deadline_checker_loop, daemon=True
+        )
+        self._deadline_checker_thread.start()
+
         logger.info("Refinement bot initialized", config=config.dict(exclude={"zulip_api_key"}))
 
     def usage(self) -> str:
@@ -62,6 +71,7 @@ class RefinementBot:
         • `start batch` - Create new estimation batch
         • `status` - Show active batch info
         • `cancel` - Cancel active batch (facilitator only)
+        • `complete` - Complete active batch and show results (facilitator only)
 
         **Batch format (GitHub URLs only):**
         ```
@@ -84,6 +94,7 @@ class RefinementBot:
         • Valid story points: 1, 2, 3, 5, 8, 13, 21
         • Must vote for all issues in the batch
         • Can update votes by submitting new estimates (replaces previous votes)
+        • Batch completes automatically when all voters submit or when deadline expires
         """
 
     def handle_message(self, message: dict[str, Any]) -> None:
@@ -113,6 +124,8 @@ class RefinementBot:
                 self._handle_status(message)
             elif content.lower() == "cancel":
                 self._handle_cancel(message)
+            elif content.lower() == "complete":
+                self._handle_complete(message)
             else:
                 if self._is_vote_format(content):
                     self._handle_vote_submission(message, content)
@@ -219,6 +232,32 @@ class RefinementBot:
 
         self.db_manager.cancel_batch(active_batch.id)
         self._send_reply(message, "✅ Batch cancelled successfully.")
+
+    def _handle_complete(self, message: dict[str, Any]) -> None:
+        """Handle batch completion request.
+
+        Args:
+            message: Zulip message data
+        """
+        active_batch = self.db_manager.get_active_batch()
+        if not active_batch:
+            self._send_reply(message, "✅ No active batch to complete.")
+            return
+
+        if message["sender_full_name"] != active_batch.facilitator:
+            self._send_reply(
+                message,
+                f"❌ Only the facilitator ({active_batch.facilitator}) can complete this batch.",
+            )
+            return
+
+        if active_batch.id is None:
+            self._send_reply(message, "❌ Error: Batch ID is missing.")
+            return
+
+        # Process completion immediately
+        self._process_batch_completion(active_batch)
+        self._send_reply(message, "✅ Batch completed successfully. Results posted to the stream.")
 
     def _send_batch_confirmation(
         self, message: dict[str, Any], issues: list[IssueData], deadline: datetime, date_str: str
@@ -486,11 +525,54 @@ Posting to #{self.config.stream_name} now..."""
             # Update the batch message with current vote count (for both new and updated votes)
             if new_count > 0 or updated_count > 0:
                 self._update_batch_message(active_batch.id, active_batch)
+
+                # Check if all voters have now completed their votes
+                self._check_and_complete_if_all_voted(active_batch)
         else:
             self._send_reply(
                 message,
                 f"⚠️ Only {stored_count} out of {len(estimates)} votes were processed successfully. "
                 "Please try again or contact the facilitator.",
+            )
+
+    def _check_and_complete_if_all_voted(self, batch: BatchData) -> None:
+        """Check if all voters have submitted votes and complete batch if so.
+
+        Args:
+            batch: The active batch to check
+        """
+        if batch.id is None:
+            return
+
+        try:
+            # Get current vote count
+            vote_count = self.db_manager.get_vote_count_by_voter(batch.id)
+            total_voters = len(self.config.voter_list)
+
+            logger.info(
+                "Checking completion status after vote submission",
+                batch_id=batch.id,
+                vote_count=vote_count,
+                total_voters=total_voters,
+            )
+
+            # If all voters have voted, complete the batch automatically
+            if vote_count >= total_voters:
+                logger.info(
+                    "All voters have completed voting, auto-completing batch",
+                    batch_id=batch.id,
+                    vote_count=vote_count,
+                    total_voters=total_voters,
+                )
+
+                # Process batch completion with auto-completion flag
+                self._process_batch_completion_auto(batch)
+
+        except Exception as e:
+            logger.error(
+                "Error checking completion status after vote",
+                batch_id=batch.id,
+                error=str(e),
             )
 
     def _update_batch_message(self, batch_id: int, active_batch: BatchData | None = None) -> None:
@@ -609,6 +691,387 @@ Posting to #{self.config.stream_name} now..."""
         except Exception as e:
             logger.error("Failed to update batch message", batch_id=batch_id, error=str(e))
 
+    def _deadline_checker_loop(self) -> None:
+        """Background thread that checks for expired batches."""
+        while self._deadline_checker_running:
+            try:
+                self._check_expired_batches()
+            except Exception as e:
+                logger.error("Error in deadline checker", error=str(e))
+
+            # Check every 5 minutes
+            time.sleep(300)
+
+    def _check_expired_batches(self) -> None:
+        """Check for and process any expired batches."""
+        active_batch = self.db_manager.get_active_batch()
+        if not active_batch or active_batch.id is None:
+            return
+
+        deadline = datetime.fromisoformat(active_batch.deadline)
+        now = datetime.now(UTC)
+
+        if now >= deadline:
+            logger.info(
+                "Batch deadline expired, processing results",
+                batch_id=active_batch.id,
+                deadline=deadline,
+                now=now,
+            )
+            self._process_batch_completion(active_batch)
+
+    def _process_batch_completion(self, batch: BatchData) -> None:
+        """Process completion of an expired batch."""
+        if batch.id is None:
+            logger.error("Cannot process batch completion: batch ID is None")
+            return
+
+        try:
+            # Get all votes for this batch
+            votes = self.db_manager.get_batch_votes(batch.id)
+            vote_count = self.db_manager.get_vote_count_by_voter(batch.id)
+            total_voters = len(self.config.voter_list)
+
+            # Update original message status
+            self._update_batch_completion_status(
+                batch, vote_count, total_voters, auto_completed=False
+            )
+
+            # Generate and post results
+            self._post_estimation_results(batch, votes, vote_count, total_voters)
+
+            # Mark batch as completed
+            self.db_manager.complete_batch(batch.id)
+
+            logger.info(
+                "Batch completion processed successfully",
+                batch_id=batch.id,
+                vote_count=vote_count,
+                total_voters=total_voters,
+            )
+
+        except Exception as e:
+            logger.error("Error processing batch completion", batch_id=batch.id, error=str(e))
+
+    def _process_batch_completion_auto(self, batch: BatchData) -> None:
+        """Process completion of a batch when all voters have voted.
+
+        Args:
+            batch: The batch to complete
+        """
+        if batch.id is None:
+            logger.error("Cannot process auto batch completion: batch ID is None")
+            return
+
+        try:
+            # Get all votes for this batch
+            votes = self.db_manager.get_batch_votes(batch.id)
+            vote_count = self.db_manager.get_vote_count_by_voter(batch.id)
+            total_voters = len(self.config.voter_list)
+
+            # Update original message status (with auto-completion flag)
+            self._update_batch_completion_status(
+                batch, vote_count, total_voters, auto_completed=True
+            )
+
+            # Generate and post results
+            self._post_estimation_results(batch, votes, vote_count, total_voters)
+
+            # Mark batch as completed
+            self.db_manager.complete_batch(batch.id)
+
+            logger.info(
+                "Auto batch completion processed successfully",
+                batch_id=batch.id,
+                vote_count=vote_count,
+                total_voters=total_voters,
+            )
+
+        except Exception as e:
+            logger.error("Error processing auto batch completion", batch_id=batch.id, error=str(e))
+
+    def _update_batch_completion_status(
+        self, batch: BatchData, vote_count: int, total_voters: int, auto_completed: bool = False
+    ) -> None:
+        """Update the original batch message to show completion status.
+
+        Args:
+            batch: The batch data
+            vote_count: Number of voters who submitted votes
+            total_voters: Total number of expected voters
+            auto_completed: True if completed automatically due to all votes received
+        """
+        if not batch.message_id:
+            logger.warning("Cannot update completion status: no message ID", batch_id=batch.id)
+            return
+
+        try:
+            deadline = datetime.fromisoformat(batch.deadline)
+            issue_list = "\n".join(
+                [
+                    f"• #{issue.issue_number} - " + f"[{issue.title}]({issue.url})"
+                    if issue.url
+                    else f"{issue.title}"
+                    for issue in batch.issues
+                ]
+            )
+
+            voter_mentions = ", ".join([f"@**{voter}**" for voter in self.config.voter_list])
+
+            # Determine completion reason
+            completion_reason = "All votes received" if auto_completed else "Deadline reached"
+
+            completed_content = f"""**📦 BATCH REFINEMENT - COMPLETED** ({completion_reason})
+**Stories**:
+{issue_list}
+
+**Deadline**: {deadline.strftime("%Y-%m-%d %H:%M UTC")} ({self.config.default_deadline_hours} hours from now)
+**Facilitator**: @**{batch.facilitator}**
+
+**How to estimate**:
+1. Review issues in GitHub
+2. Consider complexity, unknowns, dependencies for each
+3. DM @**Refinement Bot** your story point estimates in this format:
+   `#{batch.issues[0].issue_number}: 5, #{batch.issues[1].issue_number if len(batch.issues) > 1 else batch.issues[0].issue_number}: 8, #{batch.issues[2].issue_number if len(batch.issues) > 2 else batch.issues[0].issue_number}: 3`
+4. Use scale: 1, 2, 3, 5, 8, 13, 21
+
+**Voters needed**: {voter_mentions}
+
+**Status**: ✅ Vote complete ({vote_count}/{total_voters} received)
+
+*Results posted below*"""
+
+            edit_response = self.zulip_client.update_message(
+                {
+                    "message_id": batch.message_id,
+                    "content": completed_content,
+                }
+            )
+
+            if edit_response.get("result") == "success":
+                logger.info(
+                    "Updated batch message with completion status",
+                    batch_id=batch.id,
+                    message_id=batch.message_id,
+                )
+            else:
+                logger.error(
+                    "Failed to update batch completion status",
+                    batch_id=batch.id,
+                    response=edit_response,
+                )
+
+        except Exception as e:
+            logger.error("Error updating batch completion status", batch_id=batch.id, error=str(e))
+
+    def _post_estimation_results(
+        self, batch: BatchData, votes: list[EstimationVote], vote_count: int, total_voters: int
+    ) -> None:
+        """Post detailed estimation results to the stream."""
+        try:
+            # Generate results content
+            results_content = self._generate_results_content(batch, votes, vote_count, total_voters)
+
+            # Post to the same topic
+            topic_name = f"Refinement: {batch.date} ({len(batch.issues)} issues)"
+
+            response = self._send_message_with_retry(
+                {
+                    "type": "stream",
+                    "to": self.config.stream_name,
+                    "topic": topic_name,
+                    "content": results_content,
+                }
+            )
+
+            if response.get("result") == "success":
+                logger.info(
+                    "Posted estimation results",
+                    batch_id=batch.id,
+                    topic=topic_name,
+                )
+            else:
+                logger.error(
+                    "Failed to post estimation results",
+                    batch_id=batch.id,
+                    response=response,
+                )
+
+        except Exception as e:
+            logger.error("Error posting estimation results", batch_id=batch.id, error=str(e))
+
+    def _generate_results_content(
+        self, batch: BatchData, votes: list[EstimationVote], vote_count: int, total_voters: int
+    ) -> str:
+        """Generate the content for the estimation results message."""
+        # Group votes by issue
+        votes_by_issue: dict[str, list[EstimationVote]] = {}
+        for vote in votes:
+            if vote.issue_number not in votes_by_issue:
+                votes_by_issue[vote.issue_number] = []
+            votes_by_issue[vote.issue_number].append(vote)
+
+        # Find voters who didn't vote
+        all_voters = set(self.config.voter_list)
+        voted_voters = {vote.voter for vote in votes}
+        non_voters = all_voters - voted_voters
+
+        results_content = f"""🎲 **ESTIMATION RESULTS**
+
+Note: {", ".join(f"@**{voter}**" for voter in sorted(non_voters))} didn't vote in this batch.
+
+"""
+
+        consensus_issues = []
+        discussion_issues = []
+
+        # Process each issue
+        for issue in batch.issues:
+            issue_votes = votes_by_issue.get(issue.issue_number, [])
+            if not issue_votes:
+                continue
+
+            estimates = [vote.points for vote in issue_votes]
+            estimates.sort()
+
+            # Validate Fibonacci sequence
+            valid_fibonacci = [1, 2, 3, 5, 8, 13, 21]
+            invalid_votes = [est for est in estimates if est not in valid_fibonacci]
+            if invalid_votes:
+                logger.warning(
+                    "Non-Fibonacci votes detected",
+                    issue_number=issue.issue_number,
+                    invalid_votes=invalid_votes,
+                )
+
+            # Analyze consensus
+            estimate_counts = Counter(estimates)
+            most_common = estimate_counts.most_common()
+
+            # Determine consensus vs discussion needed
+            if len(most_common) == 1:
+                # Perfect consensus
+                final_estimate = most_common[0][0]
+                consensus_issues.append((issue, estimates, final_estimate, "perfect"))
+            elif len(estimates) >= 3:
+                # Check for clustering
+                sorted_estimates = sorted(estimates)
+                clusters = self._find_clusters(sorted_estimates)
+
+                if len(clusters) == 1 and len(clusters[0]) >= len(estimates) * 0.6:
+                    # Strong cluster consensus
+                    cluster = clusters[0]
+                    final_estimate = max(cluster)  # Take highest in cluster for safety
+                    consensus_issues.append((issue, estimates, final_estimate, "cluster"))
+                else:
+                    # Needs discussion
+                    discussion_issues.append((issue, estimates, clusters))
+            else:
+                # Too few votes for meaningful analysis
+                discussion_issues.append((issue, estimates, []))
+
+        # Generate consensus section
+        if consensus_issues:
+            results_content += "✅ **CONSENSUS REACHED**\n"
+            for issue, estimates, final_estimate, consensus_type in consensus_issues:
+                estimates_str = ", ".join(map(str, estimates))
+                if consensus_type == "perfect":
+                    cluster_info = "(perfect consensus)"
+                else:
+                    cluster_info = f"({self._format_cluster_info(estimates, final_estimate)})"
+
+                results_content += f"Issue {issue.issue_number} - {issue.title}\n"
+                results_content += f"Estimates: {estimates_str}\n"
+                results_content += (
+                    f"Cluster: {cluster_info} | Final: **{final_estimate} points**\n\n"
+                )
+
+        # Generate discussion section
+        if discussion_issues:
+            results_content += "⚠️ **DISCUSSION NEEDED**\n"
+            for issue, estimates, clusters in discussion_issues:
+                estimates_str = ", ".join(map(str, estimates))
+                results_content += f"Issue {issue.issue_number} - {issue.title}\n"
+                results_content += f"Estimates: {estimates_str}\n"
+
+                if len(clusters) > 1:
+                    cluster_strs = []
+                    for cluster in clusters:
+                        cluster_strs.append(f"[{','.join(map(str, cluster))}]")
+                    results_content += f"Clusters: {' vs '.join(cluster_strs)} - Mixed agreement\n"
+                else:
+                    results_content += "Wide spread - Needs discussion\n"
+
+                # Add questions for voters with outlying estimates
+                if estimates:
+                    min_est, max_est = min(estimates), max(estimates)
+                    if max_est - min_est > 5:  # Significant spread
+                        high_voters = [
+                            v.voter
+                            for v in votes_by_issue[issue.issue_number]
+                            if v.points == max_est
+                        ]
+                        low_voters = [
+                            v.voter
+                            for v in votes_by_issue[issue.issue_number]
+                            if v.points == min_est
+                        ]
+
+                        if high_voters:
+                            results_content += f"    @**{' @**'.join(high_voters)}** : What complexity are you seeing that pushes this to {max_est}?\n"
+                        if low_voters:
+                            results_content += f"    @**{' @**'.join(low_voters)}** : What's making this feel like a smaller story ({min_est} points)?\n"
+
+                results_content += "\n"
+
+        if discussion_issues:
+            results_content += "Next steps: Discussion phase for the disputed stories, then re-estimate if needed.\n\n"
+
+        results_content += (
+            "Also make sure all votes used the Fibonacci sequence as votes are being made."
+        )
+
+        return results_content
+
+    def _find_clusters(self, sorted_estimates: list[int]) -> list[list[int]]:
+        """Find clusters in sorted estimates using a simple gap-based approach."""
+        if not sorted_estimates:
+            return []
+
+        clusters = [[sorted_estimates[0]]]
+
+        for i in range(1, len(sorted_estimates)):
+            current = sorted_estimates[i]
+            previous = sorted_estimates[i - 1]
+
+            # If gap is too large, start new cluster
+            # Use Fibonacci gaps: 1->2 (gap 1), 2->3 (gap 1), 3->5 (gap 2), 5->8 (gap 3), etc.
+            if current - previous > 2:
+                clusters.append([current])
+            else:
+                clusters[-1].append(current)
+
+        return clusters
+
+    def _format_cluster_info(self, estimates: list[int], final_estimate: int) -> str:
+        """Format cluster information for display."""
+        clusters = self._find_clusters(sorted(estimates))
+
+        if len(clusters) == 1:
+            cluster = clusters[0]
+            if len(set(cluster)) == 1:
+                return "tight consensus"
+            else:
+                cluster_str = ",".join(map(str, sorted(set(cluster))))
+                outliers = [est for est in estimates if est not in cluster]
+                if outliers:
+                    outlier_str = ",".join(map(str, sorted(set(outliers))))
+                    return f"{cluster_str} (one {outlier_str} outlier)"
+                else:
+                    return f"{cluster_str} cluster"
+        else:
+            return "mixed clusters"
+
     def _send_reply(self, message: dict[str, Any], content: str) -> None:
         """Send a reply to a message.
 
@@ -636,16 +1099,29 @@ Posting to #{self.config.stream_name} now..."""
         except Exception as e:
             logger.error("Failed to send reply", error=str(e))
 
+    def stop(self) -> None:
+        """Stop the bot and cleanup resources."""
+        logger.info("Stopping Zulip Refinement Bot")
+        self._deadline_checker_running = False
+        if hasattr(self, "_deadline_checker_thread"):
+            self._deadline_checker_thread.join(timeout=5.0)
+
     def run(self) -> None:
         """Run the bot (blocking call)."""
         logger.info("Starting Zulip Refinement Bot")
 
-        def message_handler(message: dict[str, Any]) -> None:
-            """Handle incoming messages."""
-            self.handle_message(message)
+        try:
 
-        # Register message handler and start listening
-        self.zulip_client.call_on_each_message(message_handler)
+            def message_handler(message: dict[str, Any]) -> None:
+                """Handle incoming messages."""
+                self.handle_message(message)
+
+            # Register message handler and start listening
+            self.zulip_client.call_on_each_message(message_handler)
+        except KeyboardInterrupt:
+            logger.info("Received interrupt signal")
+        finally:
+            self.stop()
 
     def _send_message_with_retry(
         self, message_data: dict[str, Any], max_retries: int = 3

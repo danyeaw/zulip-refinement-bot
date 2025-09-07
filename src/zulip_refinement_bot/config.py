@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, ClassVar
 
+from pydantic import Field, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,7 +23,7 @@ class Config(BaseSettings):
     max_issues_per_batch: int = 6
     max_title_length: int = 50
 
-    default_list: ClassVar[list[str]] = [
+    _default_voters: ClassVar[list[str]] = [
         "jaimergp",
         "Jannis Leidel",
         "Sophia Castellarin",
@@ -31,10 +32,11 @@ class Config(BaseSettings):
         "Mahe Iyer",
         "Dan Yeaw",
     ]
-    voter_list_str: str = ", ".join(default_list)
+
+    voter_list_str: str = Field(default_factory=lambda: ",".join(Config._default_voters))
 
     # Database settings
-    database_path: Path = Path.cwd() / "data" / "refinement.db"
+    database_path: Path = Field(default_factory=lambda: Path.cwd() / "data" / "refinement.db")
 
     # GitHub API settings
     github_timeout: float = 10.0
@@ -47,10 +49,9 @@ class Config(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
-        env_prefix="",
     )
 
-    @property
+    @computed_field  # type: ignore[misc]
     def voter_list(self) -> list[str]:
         """Parse comma-separated voter list from environment variable."""
         return [voter.strip() for voter in self.voter_list_str.split(",") if voter.strip()]

@@ -136,14 +136,14 @@ class InputParser:
             issue_number = match.group(1)
             points = int(match.group(2))
 
-            # Validate story points are in allowed scale
-            valid_points = [1, 2, 3, 5, 8, 13, 21]
-            if points not in valid_points:
+            # Validate story points are in Fibonacci sequence
+            valid_fibonacci = [1, 2, 3, 5, 8, 13, 21]
+            if points not in valid_fibonacci:
                 logger.warning(
-                    "Invalid story points value",
+                    "Invalid story points value - must use Fibonacci sequence",
                     issue_number=issue_number,
                     points=points,
-                    valid_points=valid_points,
+                    valid_fibonacci=valid_fibonacci,
                 )
                 continue
 

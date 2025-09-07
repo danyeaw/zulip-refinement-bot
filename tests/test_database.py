@@ -182,3 +182,50 @@ class TestDatabaseManager:
         active_batch = db_manager.get_active_batch()
         assert active_batch is not None
         assert active_batch.message_id == message_id
+
+    def test_batch_completion_status_change(self, db_manager: DatabaseManager):
+        """Test batch completion status change."""
+        # Create a batch
+        batch_id = db_manager.create_batch("2024-03-25", "2024-03-27T14:00:00+00:00", "Test User")
+
+        # Verify it's active
+        active_batch = db_manager.get_active_batch()
+        assert active_batch is not None
+        assert active_batch.status == "active"
+
+        # Complete the batch
+        db_manager.complete_batch(batch_id)
+
+        # Verify it's no longer active
+        active_batch = db_manager.get_active_batch()
+        assert active_batch is None
+
+    def test_auto_completion_detection(self, db_manager: DatabaseManager):
+        """Test detection of when all voters have voted."""
+        # Create a batch
+        batch_id = db_manager.create_batch("2024-03-25", "2024-03-27T14:00:00+00:00", "Test User")
+
+        # Add some test issues
+        issues = [
+            IssueData(issue_number="1234", title="Test Issue 1", url=""),
+            IssueData(issue_number="1235", title="Test Issue 2", url=""),
+        ]
+        db_manager.add_issues_to_batch(batch_id, issues)
+
+        # Initially no votes
+        assert db_manager.get_vote_count_by_voter(batch_id) == 0
+
+        # Add votes from first voter
+        db_manager.store_vote(batch_id, "Voter 1", "1234", 5)
+        db_manager.store_vote(batch_id, "Voter 1", "1235", 8)
+        assert db_manager.get_vote_count_by_voter(batch_id) == 1
+
+        # Add votes from second voter
+        db_manager.store_vote(batch_id, "Voter 2", "1234", 3)
+        db_manager.store_vote(batch_id, "Voter 2", "1235", 5)
+        assert db_manager.get_vote_count_by_voter(batch_id) == 2
+
+        # Verify batch is still active (would be completed by bot logic, not database)
+        active_batch = db_manager.get_active_batch()
+        assert active_batch is not None
+        assert active_batch.status == "active"
