@@ -33,25 +33,10 @@ jobs:
       run: |
         pip install -e ".[dev,test]"
 
-    - name: Lint with ruff
+    - name: Run pre-commit checks
       shell: bash -l {0}
       run: |
-        ruff check src/ tests/
-
-    - name: Format check with black
-      shell: bash -l {0}
-      run: |
-        black --check src/ tests/
-
-    - name: Import sort check with isort
-      shell: bash -l {0}
-      run: |
-        isort --check-only src/ tests/
-
-    - name: Type check with mypy
-      shell: bash -l {0}
-      run: |
-        mypy src/
+        pre-commit run --all-files
 
     - name: Test with pytest
       shell: bash -l {0}
