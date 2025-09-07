@@ -45,41 +45,41 @@ class RefinementBot:
 
     def usage(self) -> str:
         """Return usage instructions for the bot."""
-        return f"""
-        **Zulip Story Point Estimation Bot - Phase 1**
+        return f"""**Zulip Story Point Estimation Bot**
 
-        **Commands (DM only):**
-        • `start batch` - Create new estimation batch
-        • `status` - Show active batch info
-        • `cancel` - Cancel active batch (facilitator only)
-        • `complete` - Complete active batch and show results (facilitator only)
-        • `list voters` - Show voters for active batch
-        • `add voter Name` - Add voter to active batch (supports @**username** format)
-        • `remove voter Name` - Remove voter from active batch (supports @**username** format)
+**Commands (DM only):**
+• `start batch` - Create new estimation batch
+• `status` - Show active batch info
+• `cancel` - Cancel active batch (facilitator only)
+• `complete` - Complete active batch and show results (facilitator only)
+• `list voters` - Show voters for active batch
+• `add voter Name` - Add voter to active batch (supports @**username** format)
+• `remove voter Name` - Remove voter from active batch (supports @**username** format)
 
-        **Batch format (GitHub URLs only):**
-        ```
-        start batch
-        https://github.com/conda/conda/issues/15169
-        https://github.com/conda/conda/issues/15168
-        https://github.com/conda/conda/issues/15167
-        ```
+**Batch format (GitHub URLs only):**
+Send `start batch` followed by GitHub issue URLs, one per line:
+```
+start batch
+https://github.com/conda/conda/issues/15169
+https://github.com/conda/conda/issues/15168
+https://github.com/conda/conda/issues/15167
+```
 
-        **Voting format:**
-        ```
-        #15169: 5, #15168: 8, #15167: 3
-        ```
+**Voting format:**
+Submit estimates for all issues in the format:
+```
+#15169: 5, #15168: 8, #15167: 3
+```
 
-        **Rules:**
-        • Maximum {self.config.max_issues_per_batch} issues per batch
-        • Only one active batch at a time
-        • Issue titles truncated at {self.config.max_title_length} characters
-        • {self.config.default_deadline_hours}-hour default deadline
-        • Valid story points: 1, 2, 3, 5, 8, 13, 21
-        • Must vote for all issues in the batch
-        • Can update votes by submitting new estimates (replaces previous votes)
-        • Batch completes automatically when all voters submit or when deadline expires
-        """
+**Rules:**
+• Maximum {self.config.max_issues_per_batch} issues per batch
+• Only one active batch at a time
+• Issue titles truncated at {self.config.max_title_length} characters
+• {self.config.default_deadline_hours}-hour default deadline
+• Valid story points: 1, 2, 3, 5, 8, 13, 21
+• Must vote for all issues in the batch
+• Can update votes by submitting new estimates (replaces previous votes)
+• Batch completes automatically when all voters submit or when deadline expires"""
 
     def handle_message(self, message: dict[str, Any]) -> None:
         """Handle incoming messages.
