@@ -1,7 +1,7 @@
 # Zulip Refinement Bot
 
-[![CI](https://github.com/yourusername/zulip-refinement-bot/workflows/CI/badge.svg)](https://github.com/yourusername/zulip-refinement-bot/actions)
-[![codecov](https://codecov.io/gh/yourusername/zulip-refinement-bot/branch/main/graph/badge.svg)](https://codecov.io/gh/yourusername/zulip-refinement-bot)
+[![CI](https://github.com/danyeaw/zulip-refinement-bot/workflows/CI/badge.svg)](https://github.com/danyeaw/zulip-refinement-bot/actions)
+[![codecov](https://codecov.io/gh/danyeaw/zulip-refinement-bot/branch/main/graph/badge.svg)](https://codecov.io/gh/danyeaw/zulip-refinement-bot)
 [![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
@@ -23,7 +23,7 @@ A Zulip bot for batch story point estimation workflows. Fetches GitHub issues, m
 ### Using Conda
 
 ```bash
-git clone https://github.com/yourusername/zulip-refinement-bot.git
+git clone https://github.com/danyeaw/zulip-refinement-bot.git
 cd zulip-refinement-bot
 
 conda env create -f environment.yml
@@ -38,7 +38,7 @@ zulip-refinement-bot run
 ### Using Docker
 
 ```bash
-git clone https://github.com/yourusername/zulip-refinement-bot.git
+git clone https://github.com/danyeaw/zulip-refinement-bot.git
 cd zulip-refinement-bot
 
 cp .env.example .env
@@ -161,7 +161,7 @@ src/zulip_refinement_bot/
 ### Setup
 
 ```bash
-git clone https://github.com/yourusername/zulip-refinement-bot.git
+git clone https://github.com/danyeaw/zulip-refinement-bot.git
 cd zulip-refinement-bot
 conda env create -f environment.yml
 conda activate zulip-refinement-bot
