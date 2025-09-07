@@ -423,7 +423,17 @@ Posting to #{self.config.stream_name} now..."""
         # Note: We now allow vote updates, so we don't check if voter has already voted
 
         # Parse the votes
-        estimates = self.parser.parse_estimation_input(content)
+        estimates, validation_errors = self.parser.parse_estimation_input(content)
+
+        # Check for validation errors (invalid Fibonacci values)
+        if validation_errors:
+            error_msg = "❌ Invalid story point values found:\n"
+            for error in validation_errors:
+                error_msg += f"  • {error}\n"
+            error_msg += "\nValid story points (Fibonacci sequence): 1, 2, 3, 5, 8, 13, 21"
+            self._send_reply(message, error_msg)
+            return
+
         if not estimates:
             self._send_reply(
                 message,
@@ -934,15 +944,7 @@ Note: {", ".join(f"@**{voter}**" for voter in sorted(non_voters))} didn't vote i
             estimates = [vote.points for vote in issue_votes]
             estimates.sort()
 
-            # Validate Fibonacci sequence
-            valid_fibonacci = [1, 2, 3, 5, 8, 13, 21]
-            invalid_votes = [est for est in estimates if est not in valid_fibonacci]
-            if invalid_votes:
-                logger.warning(
-                    "Non-Fibonacci votes detected",
-                    issue_number=issue.issue_number,
-                    invalid_votes=invalid_votes,
-                )
+            # Note: Fibonacci validation is now enforced during vote submission
 
             # Analyze consensus
             estimate_counts = Counter(estimates)
@@ -1025,11 +1027,7 @@ Note: {", ".join(f"@**{voter}**" for voter in sorted(non_voters))} didn't vote i
                 results_content += "\n"
 
         if discussion_issues:
-            results_content += "Next steps: Discussion phase for the disputed stories, then re-estimate if needed.\n\n"
-
-        results_content += (
-            "Also make sure all votes used the Fibonacci sequence as votes are being made."
-        )
+            results_content += "Next steps: Discussion phase for the disputed stories, then re-estimate if needed.\n"
 
         return results_content
 

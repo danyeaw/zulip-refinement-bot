@@ -116,7 +116,7 @@ class InputParser:
         logger.info("Successfully parsed batch input", issue_count=len(issues))
         return ParseResult(success=True, issues=issues, error="")
 
-    def parse_estimation_input(self, content: str) -> dict[str, int]:
+    def parse_estimation_input(self, content: str) -> tuple[dict[str, int], list[str]]:
         """Parse story point estimation input.
 
         Expected format: "#1234: 5, #1235: 8, #1236: 3"
@@ -125,9 +125,11 @@ class InputParser:
             content: Raw estimation input
 
         Returns:
-            Dictionary mapping issue numbers to story points
+            Tuple of (valid estimates dict, list of validation errors)
         """
         estimates = {}
+        validation_errors = []
+        valid_fibonacci = [1, 2, 3, 5, 8, 13, 21]
 
         # Pattern to match "#1234: 5" format
         pattern = re.compile(r"#(\d+):\s*(\d+)")
@@ -137,8 +139,11 @@ class InputParser:
             points = int(match.group(2))
 
             # Validate story points are in Fibonacci sequence
-            valid_fibonacci = [1, 2, 3, 5, 8, 13, 21]
             if points not in valid_fibonacci:
+                validation_errors.append(
+                    f"#{issue_number}: {points} "
+                    f"(must be one of: {', '.join(map(str, valid_fibonacci))})"
+                )
                 logger.warning(
                     "Invalid story points value - must use Fibonacci sequence",
                     issue_number=issue_number,
@@ -149,5 +154,7 @@ class InputParser:
 
             estimates[issue_number] = points
 
-        logger.info("Parsed estimation input", estimates=estimates)
-        return estimates
+        logger.info(
+            "Parsed estimation input", estimates=estimates, validation_errors=validation_errors
+        )
+        return estimates, validation_errors

@@ -141,34 +141,41 @@ https://github.com/conda/conda/issues/99999"""
         """Test valid estimation input parsing."""
         content = "#1234: 5, #1235: 8, #1236: 3"
 
-        estimates = parser.parse_estimation_input(content)
+        estimates, validation_errors = parser.parse_estimation_input(content)
 
         assert estimates == {"1234": 5, "1235": 8, "1236": 3}
+        assert validation_errors == []
 
     def test_parse_estimation_input_invalid_points(self, parser: InputParser):
         """Test estimation input with invalid story points."""
         content = "#1234: 4, #1235: 8, #1236: 15"  # 4 and 15 are not valid
 
-        estimates = parser.parse_estimation_input(content)
+        estimates, validation_errors = parser.parse_estimation_input(content)
 
         # Should only include valid points (8)
         assert estimates == {"1235": 8}
+        # Should have validation errors for invalid points
+        assert len(validation_errors) == 2
+        assert "#1234: 4" in validation_errors[0]
+        assert "#1236: 15" in validation_errors[1]
 
     def test_parse_estimation_input_mixed_format(self, parser: InputParser):
         """Test estimation input with mixed valid/invalid format."""
         content = "#1234: 5, invalid format, #1235: 8"
 
-        estimates = parser.parse_estimation_input(content)
+        estimates, validation_errors = parser.parse_estimation_input(content)
 
         assert estimates == {"1234": 5, "1235": 8}
+        assert validation_errors == []  # Invalid format is ignored, not a validation error
 
     def test_parse_estimation_input_empty(self, parser: InputParser):
         """Test empty estimation input."""
         content = ""
 
-        estimates = parser.parse_estimation_input(content)
+        estimates, validation_errors = parser.parse_estimation_input(content)
 
         assert estimates == {}
+        assert validation_errors == []
 
     def test_github_url_pattern_matching(self, parser: InputParser):
         """Test GitHub URL pattern matching."""
