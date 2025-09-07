@@ -926,11 +926,10 @@ Posting to #{self.config.stream_name} now..."""
         voted_voters = {vote.voter for vote in votes}
         non_voters = all_voters - voted_voters
 
-        results_content = f"""🎲 **ESTIMATION RESULTS**
+        results_content = "🎲 **ESTIMATION RESULTS**\n\n"
 
-Note: {", ".join(f"@**{voter}**" for voter in sorted(non_voters))} didn't vote in this batch.
-
-"""
+        if non_voters:
+            results_content += f"Note: {', '.join(f'@**{voter}**' for voter in sorted(non_voters))} didn't vote in this batch.\n\n"
 
         consensus_issues = []
         discussion_issues = []
