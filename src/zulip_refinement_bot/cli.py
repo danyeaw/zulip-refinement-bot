@@ -11,13 +11,11 @@ from rich.console import Console
 from rich.logging import RichHandler
 
 from . import __version__
-from .bot import RefinementBot
-from .config import Config
 from .migrations.cli import app as migrate_app
 
 app = typer.Typer(
     name="zulip-refinement-bot",
-    help="A modern Zulip bot for batch story point estimation and refinement workflows.",
+    help="A webhook-based Zulip bot for batch story point estimation and refinement workflows.",
     add_completion=False,
 )
 
@@ -82,63 +80,7 @@ def setup_logging(log_level: str = "INFO", log_format: str = "json") -> None:
         )
 
 
-@app.command()  # type: ignore[misc]
-def run(
-    config_file: Path | None = typer.Option(
-        None,
-        "--config",
-        "-c",
-        help="Path to configuration file (.env format)",
-        exists=True,
-        file_okay=True,
-        dir_okay=False,
-    ),
-    log_level: str = typer.Option(
-        "INFO",
-        "--log-level",
-        "-l",
-        help="Logging level",
-        case_sensitive=False,
-    ),
-    log_format: str = typer.Option(
-        "console",
-        "--log-format",
-        "-f",
-        help="Log format (console or json)",
-        case_sensitive=False,
-    ),
-) -> None:
-    """Run the Zulip Refinement Bot."""
-
-    # Set up logging first
-    setup_logging(log_level, log_format)
-    logger = structlog.get_logger(__name__)
-
-    try:
-        # Load configuration
-        if config_file:
-            config = Config(_env_file=config_file)
-        else:
-            config = Config()
-
-        # Override log settings from CLI
-        config.log_level = log_level.upper()
-        config.log_format = log_format.lower()
-
-        logger.info("Starting Zulip Refinement Bot", version=__version__)
-
-        # Create and run bot
-        bot = RefinementBot(config)
-        bot.run()
-
-    except KeyboardInterrupt:
-        logger.info("Bot stopped by user")
-        console.print("\n👋 Bot stopped gracefully")
-        sys.exit(0)
-    except Exception as e:
-        logger.error("Failed to start bot", error=str(e))
-        console.print(f"❌ [red]Error:[/red] {e}")
-        sys.exit(1)
+# Removed the 'run' command - the bot now only supports webhook mode via the 'server' command
 
 
 @app.command()  # type: ignore[misc]

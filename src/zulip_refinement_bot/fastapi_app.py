@@ -8,21 +8,21 @@ import structlog
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from .bot import RefinementBot
 from .config import Config
-from .webhook_bot import WebhookRefinementBot
 
 logger = structlog.get_logger(__name__)
 
 # Global bot instance
-_bot_instance: WebhookRefinementBot | None = None
+_bot_instance: RefinementBot | None = None
 
 
-def get_bot_instance() -> WebhookRefinementBot:
+def get_bot_instance() -> RefinementBot:
     """Get or create the bot instance."""
     global _bot_instance
     if _bot_instance is None:
         config = Config()
-        _bot_instance = WebhookRefinementBot(config)
+        _bot_instance = RefinementBot(config)
         logger.info("Bot instance created for FastAPI")
     return _bot_instance
 

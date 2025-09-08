@@ -1,6 +1,6 @@
 # Deploying Zulip Refinement Bot to PythonAnywhere
 
-This guide explains how to deploy the FastAPI version of the Zulip Refinement Bot to PythonAnywhere.
+This guide explains how to deploy the Zulip Refinement Bot to PythonAnywhere.
 
 ## Prerequisites
 
@@ -92,44 +92,8 @@ If successful, you should see:
     ~<:>>>>>>>>>
 ```
 
-### 6. Alternative: Manual WSGI Setup
 
-If ASGI deployment doesn't work, you can set up a traditional WSGI app:
-
-1. Go to the **Web** tab in your PythonAnywhere dashboard
-2. Click **Add a new web app**
-3. Choose **Manual configuration** and **Python 3.13**
-4. Edit the WSGI configuration file (`/var/www/${USER}_pythonanywhere_com_wsgi.py`):
-
-```python
-import os
-import sys
-
-# Add your project directory to the Python path
-path = '/home/{}/zulip-refinement-bot'.format(os.environ['USER'])
-if path not in sys.path:
-    sys.path.append(path)
-
-# Add the src directory to the Python path
-src_path = '/home/{}/zulip-refinement-bot/src'.format(os.environ['USER'])
-if src_path not in sys.path:
-    sys.path.append(src_path)
-
-# Set environment variables
-os.environ['PYTHONPATH'] = src_path
-
-# Import the FastAPI application
-from zulip_refinement_bot.fastapi_app import app
-
-# For ASGI apps, use uvicorn WSGI adapter
-from uvicorn.middleware.wsgi import WSGIMiddleware
-application = WSGIMiddleware(app)
-```
-
-5. Set the **Virtualenv** to `/home/$USER/.virtualenvs/zulip-bot`
-6. Reload the web app
-
-### 7. Configure Zulip Outgoing Webhook
+### 6. Configure Zulip Outgoing Webhook
 
 1. Go to your Zulip organization settings
 2. Navigate to **Organization** > **Bots**
@@ -213,22 +177,3 @@ Your deployed bot will respond to these endpoints:
    cd ~/zulip-refinement-bot
    python -m zulip_refinement_bot.migrations.cli upgrade
    ```
-
-### Monitoring
-
-- Check logs regularly for errors
-- Monitor the health endpoint: `https://$USER.pythonanywhere.com/health`
-- Test bot functionality periodically
-
-## Security Notes
-
-1. Keep your `.env` file secure and never commit it to version control
-2. Regularly rotate your Zulip API keys
-3. Monitor access logs for unusual activity
-4. Keep dependencies updated
-
-## Support
-
-- PythonAnywhere ASGI documentation: https://help.pythonanywhere.com/pages/ASGICommandLine
-- Zulip bot documentation: https://zulip.com/api/bots-guide
-- FastAPI deployment guide: https://fastapi.tiangolo.com/deployment/

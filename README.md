@@ -5,7 +5,7 @@
 [![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
-A modern Zulip bot for batch story point estimation workflows. Supports both traditional bot mode and FastAPI webhook deployment for easy hosting on platforms like PythonAnywhere. Fetches GitHub issues, manages voting sessions, and generates consensus reports.
+A webhook-based Zulip bot for batch story point estimation workflows. Designed for FastAPI webhook deployment and easy hosting on platforms like PythonAnywhere. Fetches GitHub issues, manages voting sessions, and generates consensus reports.
 
 ## Features
 
@@ -15,7 +15,7 @@ A modern Zulip bot for batch story point estimation workflows. Supports both tra
 - Automated consensus analysis and reporting
 - **Discussion phase** - automatically triggered when consensus isn't reached
 - **Multi-voter support** - add/remove multiple voters in single commands
-- **Dual deployment modes** - traditional bot or FastAPI webhook server
+- **Webhook-based architecture** - FastAPI webhook server for reliable deployment
 - **PythonAnywhere ready** - easy deployment on web hosting platforms
 - Full type safety and comprehensive testing
 
@@ -34,10 +34,7 @@ pip install -e .
 zulip-refinement-bot init-config
 # Edit .env with your Zulip credentials
 
-# Traditional bot mode (listens for messages)
-zulip-refinement-bot run
-
-# OR webhook server mode (for PythonAnywhere deployment)
+# Start the webhook server
 zulip-refinement-bot server
 ```
 
@@ -50,6 +47,8 @@ cd zulip-refinement-bot
 pip install -r requirements.txt
 zulip-refinement-bot init-config
 # Edit .env with your Zulip credentials
+
+# Start the webhook server
 zulip-refinement-bot server
 ```
 
@@ -184,23 +183,10 @@ pre-commit install
 pre-commit run --all-files
 ```
 
-## Deployment
-
-### PythonAnywhere (FastAPI Webhook Mode)
-
-For easy deployment on PythonAnywhere:
-
-1. Upload your project files
-2. Set up a virtual environment with dependencies
-3. Configure Zulip outgoing webhook
-4. Deploy as ASGI application
-
-See [deploy_pythonanywhere.md](deploy_pythonanywhere.md) for detailed instructions.
-
-### FastAPI Server (Local Development)
+### Local Development
 
 ```bash
-# Start webhook server
+# Start development server with auto-reload
 zulip-refinement-bot server --reload --port 8000
 
 # Configure Zulip to send webhooks to: http://localhost:8000/webhook

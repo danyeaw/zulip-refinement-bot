@@ -85,7 +85,7 @@ remove Alice and Bob
 **Discussion phase:**
 When consensus isn't reached, complete discussion with:
 ```
-finish #15169: 5 After discussion we agreed it's medium complexity, #15168: 3 Simple bug fix confirmed
+finish #15169: 5 After discussion we agreed it's medium complexity, #15168: 3 Simple fix
 ```
 
 **Rules:**
@@ -99,87 +99,80 @@ finish #15169: 5 After discussion we agreed it's medium complexity, #15168: 3 Si
 • New voters automatically added when they submit votes
 • Batch completes automatically when all voters submit or when deadline expires"""
 
-    def handle_message(self, message: dict[str, Any]) -> None:
-        """Handle incoming messages.
-
-        Args:
-            message: Zulip message data
-        """
+    def handle_message(self, message: dict[str, Any]) -> dict[str, Any]:
+        """Handle incoming messages from webhook."""
         try:
             msg_data = MessageData(**message)
 
-            # Skip messages from the bot itself
             if msg_data.sender_email == self.config.zulip_email:
-                return
+                return {"status": "ignored", "reason": "self_message"}
 
-            # Only handle private messages
             if msg_data.type != "private":
-                return
+                return {"status": "ignored", "reason": "not_private"}
 
             content = msg_data.content.strip()
 
-            # Handle help/usage requests
             if not content or content.lower() in ["help", "usage"]:
                 self._send_reply(message, self.usage())
-                return
+                return {"status": "success", "action": "help"}
 
-            # Route to appropriate handler
-            self._route_message(message, content)
+            action = self._route_message(message, content)
+            return {"status": "success", "action": action}
 
         except Exception as e:
             logger.error("Error handling message", error=str(e), message=message)
             self._send_reply(
                 message, "❌ An error occurred processing your message. Please try again."
             )
+            return {"status": "error", "error": str(e)}
 
-    def _route_message(self, message: dict[str, Any], content: str) -> None:
-        """Route message to appropriate handler.
-
-        Args:
-            message: Zulip message data
-            content: Message content
-        """
+    def _route_message(self, message: dict[str, Any], content: str) -> str:
+        """Route message to appropriate handler."""
         try:
             if content.lower().startswith("start"):
                 self.message_handler.handle_start_batch(message, content)
+                return "start_batch"
             elif content.lower() == "status":
                 self.message_handler.handle_status(message)
+                return "status"
             elif content.lower() == "cancel":
                 self.message_handler.handle_cancel(message)
+                return "cancel"
             elif content.lower() == "complete":
                 self.message_handler.handle_complete(message)
+                return "complete"
             elif content.lower() == "list":
                 self.message_handler.handle_list_voters(message)
+                return "list_voters"
             elif content.lower().startswith("add "):
                 self.message_handler.handle_add_voter(message, content)
+                return "add_voter"
             elif content.lower().startswith("remove "):
                 self.message_handler.handle_remove_voter(message, content)
+                return "remove_voter"
             elif content.lower().startswith("finish"):
                 self.message_handler.handle_finish(message, content)
+                return "finish"
             else:
-                # Check if it's a vote format
                 if self.message_handler.is_vote_format(content):
                     self.message_handler.handle_vote_submission(message, content)
+                    return "vote_submission"
                 else:
                     self._send_reply(
                         message, "❌ Unknown command. Send 'help' for usage instructions."
                     )
+                    return "unknown_command"
 
         except RefinementBotError as e:
-            # These are expected business logic errors
             self._send_reply(message, f"❌ {e.message}")
+            return f"error_{type(e).__name__}"
         except Exception as e:
-            # Unexpected errors
             logger.error("Unexpected error in message routing", error=str(e))
             self._send_reply(message, "❌ An unexpected error occurred. Please try again.")
+            return "unexpected_error"
 
     def _send_reply(self, message: dict[str, Any], content: str) -> None:
-        """Send a reply to a message.
-
-        Args:
-            message: Original message to reply to
-            content: Reply content
-        """
+        """Send a reply to a message."""
         try:
             response = self.zulip_client.send_message(
                 {
@@ -243,20 +236,3 @@ finish #15169: 5 After discussion we agreed it's medium complexity, #15168: 3 Si
         self._deadline_checker_running = False
         if hasattr(self, "_deadline_checker_thread"):
             self._deadline_checker_thread.join(timeout=5.0)
-
-    def run(self) -> None:
-        """Run the bot (blocking call)."""
-        logger.info("Starting Zulip Refinement Bot")
-
-        try:
-
-            def message_handler(message: dict[str, Any]) -> None:
-                """Handle incoming messages."""
-                self.handle_message(message)
-
-            # Register message handler and start listening
-            self.zulip_client.call_on_each_message(message_handler)
-        except KeyboardInterrupt:
-            logger.info("Received interrupt signal")
-        finally:
-            self.stop()
