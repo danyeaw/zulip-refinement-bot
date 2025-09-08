@@ -802,23 +802,34 @@ Posting to #{self.config.stream_name} now..."""
                     total_voters=total_voters,
                 )
             else:
-                # All consensus - complete normally
+                consensus_estimates = self._extract_consensus_estimates(batch, votes)
+
+                for issue_number, points in consensus_estimates.items():
+                    self.batch_service.database.store_final_estimate(
+                        batch.id, issue_number, points, "Consensus reached during initial voting"
+                    )
+
                 self.batch_service.complete_batch(batch.id, batch.facilitator)
 
-                # Update original message status
                 self._update_batch_completion_status(
                     batch, vote_count, total_voters, auto_completed
                 )
 
-                # Post final results
-                self._post_estimation_results(batch, votes, vote_count, total_voters)
+                final_estimates = {
+                    issue_number: (points, "Consensus reached during initial voting")
+                    for issue_number, points in consensus_estimates.items()
+                }
+
+                batch.status = "completed"
+                self._post_finish_results(batch, final_estimates)
 
                 logger.info(
-                    "Batch completion processed successfully",
+                    "Batch auto-completed with full consensus",
                     batch_id=batch.id,
                     vote_count=vote_count,
                     total_voters=total_voters,
                     auto_completed=auto_completed,
+                    consensus_issues=len(consensus_estimates),
                 )
 
         except Exception as e:

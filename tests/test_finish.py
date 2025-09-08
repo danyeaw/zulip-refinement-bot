@@ -483,3 +483,109 @@ def test_discussion_complete_integration_full_discussion_workflow(
         batch = message_handler.batch_service.get_active_batch()
         # Should be None since batch is completed
         assert batch is None or batch.status == "completed"
+
+
+def test_auto_finish_when_consensus_reached(
+    message_handler: MessageHandler,
+    db_manager: DatabaseManager,
+) -> None:
+    """Test that finish is automatically triggered when consensus is reached during estimation."""
+    batch = BatchData(
+        id=1,
+        date="2024-03-25",
+        deadline="2024-03-27T14:00:00+00:00",
+        facilitator="Test User",
+        issues=[
+            IssueData(issue_number="1234", title="Test Issue 1", url=""),
+            IssueData(issue_number="1235", title="Test Issue 2", url=""),
+        ],
+        status="voting",
+        message_id=123,
+    )
+
+    batch_id = db_manager.create_batch(batch.date, batch.deadline, batch.facilitator)
+    batch.id = batch_id
+
+    db_manager.add_issues_to_batch(batch_id, batch.issues)
+    db_manager.add_batch_voters(batch_id, ["voter1", "voter2", "voter3"])
+
+    db_manager.upsert_vote(batch_id, "voter1", "1234", 5)
+    db_manager.upsert_vote(batch_id, "voter1", "1235", 8)
+    db_manager.upsert_vote(batch_id, "voter2", "1234", 5)
+    db_manager.upsert_vote(batch_id, "voter2", "1235", 8)
+    db_manager.upsert_vote(batch_id, "voter3", "1234", 5)
+    db_manager.upsert_vote(batch_id, "voter3", "1235", 8)
+
+    with (
+        patch.object(message_handler, "_update_batch_completion_status") as mock_update,
+        patch.object(message_handler, "_post_finish_results") as mock_post_finish,
+        patch.object(message_handler, "_post_estimation_results") as mock_post_estimation,
+    ):
+        message_handler._process_batch_completion(batch, auto_completed=True)
+
+        mock_post_finish.assert_called_once()
+        mock_post_estimation.assert_not_called()
+        mock_update.assert_called_once()
+
+        updated_batch = message_handler.batch_service.get_active_batch()
+        assert updated_batch is None or updated_batch.status == "completed"
+
+        final_estimates = db_manager.get_final_estimates(batch_id)
+        assert len(final_estimates) == 2
+
+        estimates_dict = {est.issue_number: est.final_points for est in final_estimates}
+        assert estimates_dict["1234"] == 5
+        assert estimates_dict["1235"] == 8
+
+        for est in final_estimates:
+            assert "Consensus reached during initial voting" in est.rationale
+
+
+def test_no_auto_finish_when_discussion_needed(
+    message_handler: MessageHandler,
+    db_manager: DatabaseManager,
+) -> None:
+    """Test that finish is NOT automatically triggered when discussion is needed."""
+    batch = BatchData(
+        id=1,
+        date="2024-03-25",
+        deadline="2024-03-27T14:00:00+00:00",
+        facilitator="Test User",
+        issues=[
+            IssueData(issue_number="1234", title="Test Issue 1", url=""),
+            IssueData(issue_number="1235", title="Test Issue 2", url=""),
+        ],
+        status="voting",
+        message_id=123,
+    )
+
+    batch_id = db_manager.create_batch(batch.date, batch.deadline, batch.facilitator)
+    batch.id = batch_id
+
+    db_manager.add_issues_to_batch(batch_id, batch.issues)
+    db_manager.add_batch_voters(batch_id, ["voter1", "voter2", "voter3"])
+
+    db_manager.upsert_vote(batch_id, "voter1", "1234", 3)
+    db_manager.upsert_vote(batch_id, "voter1", "1235", 8)
+    db_manager.upsert_vote(batch_id, "voter2", "1234", 5)
+    db_manager.upsert_vote(batch_id, "voter2", "1235", 8)
+    db_manager.upsert_vote(batch_id, "voter3", "1234", 8)
+    db_manager.upsert_vote(batch_id, "voter3", "1235", 8)
+
+    with (
+        patch.object(message_handler, "_update_batch_discussion_status") as mock_discussion_update,
+        patch.object(message_handler, "_post_finish_results") as mock_post_finish,
+        patch.object(message_handler, "_post_estimation_results") as mock_post_estimation,
+    ):
+        message_handler._process_batch_completion(batch, auto_completed=True)
+
+        mock_post_estimation.assert_called_once()
+        mock_post_finish.assert_not_called()
+        mock_discussion_update.assert_called_once()
+
+        updated_batch = message_handler.batch_service.get_active_batch()
+        assert updated_batch is not None
+        assert updated_batch.status == "discussing"
+
+        final_estimates = db_manager.get_final_estimates(batch_id)
+        assert len(final_estimates) == 0
