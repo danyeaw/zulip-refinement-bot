@@ -12,188 +12,184 @@ from zulip_refinement_bot.models import BatchData, IssueData
 from zulip_refinement_bot.services import BatchService, VotingService
 
 
-class TestBatchService:
-    """Tests for BatchService."""
+def test_batch_service_create_batch_success(test_config: Config) -> None:
+    """Test successful batch creation."""
+    # Mock dependencies
+    mock_database = MagicMock()
+    mock_github_api = MagicMock()
+    mock_parser = MagicMock()
 
-    def test_create_batch_success(self, test_config: Config) -> None:
-        """Test successful batch creation."""
-        # Mock dependencies
-        mock_database = MagicMock()
-        mock_github_api = MagicMock()
-        mock_parser = MagicMock()
-
-        # Setup mocks
-        mock_database.get_active_batch.return_value = None
-        mock_parser.parse_batch_input.return_value = MagicMock(
-            success=True,
-            issues=[
-                IssueData(
-                    issue_number="1234",
-                    title="Test Issue",
-                    url="https://github.com/test/test/issues/1234",
-                )
-            ],
-            error="",
-        )
-        mock_database.create_batch.return_value = 1
-        mock_database.add_issues_to_batch.return_value = None
-        mock_database.add_batch_voters.return_value = None
-
-        # Create service
-        service = BatchService(test_config, mock_database, mock_github_api, mock_parser)
-
-        # Test batch creation
-        batch_id, issues, deadline = service.create_batch(
-            "start batch\nhttps://github.com/test/test/issues/1234", "facilitator"
-        )
-
-        # Assertions
-        assert batch_id == 1
-        assert len(issues) == 1
-        assert issues[0].issue_number == "1234"
-        mock_database.create_batch.assert_called_once()
-        mock_database.add_issues_to_batch.assert_called_once()
-        from zulip_refinement_bot.config import Config
-
-        mock_database.add_batch_voters.assert_called_once_with(1, Config._default_voters)
-
-    def test_create_batch_with_active_batch_fails(self, test_config: Config) -> None:
-        """Test batch creation fails when there's already an active batch."""
-        # Mock dependencies
-        mock_database = MagicMock()
-        mock_github_api = MagicMock()
-        mock_parser = MagicMock()
-
-        # Setup mocks
-        mock_database.get_active_batch.return_value = BatchData(
-            id=1, date="2024-01-01", deadline="2024-01-02T00:00:00", facilitator="someone"
-        )
-
-        # Create service
-        service = BatchService(test_config, mock_database, mock_github_api, mock_parser)
-
-        # Test batch creation fails
-        with pytest.raises(BatchError, match="Active batch already running"):
-            service.create_batch(
-                "start batch\nhttps://github.com/test/test/issues/1234", "facilitator"
+    # Setup mocks
+    mock_database.get_active_batch.return_value = None
+    mock_parser.parse_batch_input.return_value = MagicMock(
+        success=True,
+        issues=[
+            IssueData(
+                issue_number="1234",
+                title="Test Issue",
+                url="https://github.com/test/test/issues/1234",
             )
+        ],
+        error="",
+    )
+    mock_database.create_batch.return_value = 1
+    mock_database.add_issues_to_batch.return_value = None
+    mock_database.add_batch_voters.return_value = None
 
-    def test_cancel_batch_unauthorized(self, test_config: Config) -> None:
-        """Test batch cancellation fails for unauthorized user."""
-        # Mock dependencies
-        mock_database = MagicMock()
-        mock_github_api = MagicMock()
-        mock_parser = MagicMock()
+    # Create service
+    service = BatchService(test_config, mock_database, mock_github_api, mock_parser)
 
-        # Setup mocks
-        mock_database.get_active_batch.return_value = BatchData(
-            id=1,
-            date="2024-01-01",
-            deadline="2024-01-02T00:00:00",
-            facilitator="original_facilitator",
-        )
+    # Test batch creation
+    batch_id, issues, deadline = service.create_batch(
+        "start batch\nhttps://github.com/test/test/issues/1234", "facilitator"
+    )
 
-        # Create service
-        service = BatchService(test_config, mock_database, mock_github_api, mock_parser)
+    # Assertions
+    assert batch_id == 1
+    assert len(issues) == 1
+    assert issues[0].issue_number == "1234"
+    mock_database.create_batch.assert_called_once()
+    mock_database.add_issues_to_batch.assert_called_once()
+    from zulip_refinement_bot.config import Config
 
-        # Test cancellation fails for wrong user
-        with pytest.raises(AuthorizationError, match="Only the facilitator"):
-            service.cancel_batch(1, "different_user")
+    mock_database.add_batch_voters.assert_called_once_with(1, Config._default_voters)
 
 
-class TestVotingService:
-    """Tests for VotingService."""
+def test_batch_service_create_batch_with_active_batch_fails(test_config: Config) -> None:
+    """Test batch creation fails when there's already an active batch."""
+    # Mock dependencies
+    mock_database = MagicMock()
+    mock_github_api = MagicMock()
+    mock_parser = MagicMock()
 
-    def test_submit_votes_auto_adds_new_voter(self, test_config: Config) -> None:
-        """Test vote submission automatically adds new voters to batch."""
-        # Mock dependencies
-        mock_database = MagicMock()
-        mock_parser = MagicMock()
+    # Setup mocks
+    mock_database.get_active_batch.return_value = BatchData(
+        id=1, date="2024-01-01", deadline="2024-01-02T00:00:00", facilitator="someone"
+    )
 
-        # Setup mocks
-        mock_database.get_batch_voters.return_value = ["voter1", "voter2"]  # Original voters
-        mock_database.add_voter_to_batch.return_value = True  # Successfully added
-        mock_database.get_vote_count_by_voter.return_value = 1
-        mock_parser.parse_estimation_input.return_value = ({"1234": 5}, [])
-        mock_database.upsert_vote.return_value = (True, False)
+    # Create service
+    service = BatchService(test_config, mock_database, mock_github_api, mock_parser)
 
-        # Create service
-        service = VotingService(test_config, mock_database, mock_parser)
+    # Test batch creation fails
+    with pytest.raises(BatchError, match="Active batch already running"):
+        service.create_batch("start batch\nhttps://github.com/test/test/issues/1234", "facilitator")
 
-        # Create batch with matching issue
-        batch = BatchData(
-            id=1,
-            date="2024-01-01",
-            deadline="2024-01-02T00:00:00",
-            facilitator="facilitator",
-            issues=[IssueData(issue_number="1234", title="Test Issue", url="")],
-        )
 
-        # Test vote submission succeeds and adds new voter
-        estimates, has_updates, all_complete = service.submit_votes("#1234: 5", "new_voter", batch)
+def test_batch_service_cancel_batch_unauthorized(test_config: Config) -> None:
+    """Test batch cancellation fails for unauthorized user."""
+    # Mock dependencies
+    mock_database = MagicMock()
+    mock_github_api = MagicMock()
+    mock_parser = MagicMock()
 
-        # Verify voter was added
-        mock_database.add_voter_to_batch.assert_called_once_with(1, "new_voter")
-        assert estimates == {"1234": 5}
-        assert has_updates is True
+    # Setup mocks
+    mock_database.get_active_batch.return_value = BatchData(
+        id=1,
+        date="2024-01-01",
+        deadline="2024-01-02T00:00:00",
+        facilitator="original_facilitator",
+    )
 
-    def test_submit_votes_success(self, test_config: Config) -> None:
-        """Test successful vote submission."""
-        # Mock dependencies
-        mock_database = MagicMock()
-        mock_parser = MagicMock()
+    # Create service
+    service = BatchService(test_config, mock_database, mock_github_api, mock_parser)
 
-        # Setup mocks
-        mock_database.get_batch_voters.return_value = [
-            "voter1",
-            "voter2",
-            "voter3",
-        ]  # voter1 is authorized
-        mock_parser.parse_estimation_input.return_value = ({"1234": 5}, [])
-        mock_database.upsert_vote.return_value = (True, False)
-        mock_database.get_vote_count_by_voter.return_value = 1
+    # Test cancellation fails for wrong user
+    with pytest.raises(AuthorizationError, match="Only the facilitator"):
+        service.cancel_batch(1, "different_user")
 
-        # Create service
-        service = VotingService(test_config, mock_database, mock_parser)
 
-        # Create batch with matching issue
-        batch = BatchData(
-            id=1,
-            date="2024-01-01",
-            deadline="2024-01-02T00:00:00",
-            facilitator="facilitator",
-            issues=[IssueData(issue_number="1234", title="Test Issue", url="")],
-        )
+def test_voting_service_submit_votes_auto_adds_new_voter(test_config: Config) -> None:
+    """Test vote submission automatically adds new voters to batch."""
+    # Mock dependencies
+    mock_database = MagicMock()
+    mock_parser = MagicMock()
 
-        # Test vote submission
-        estimates, has_updates, all_complete = service.submit_votes("#1234: 5", "voter1", batch)
+    # Setup mocks
+    mock_database.get_batch_voters.return_value = ["voter1", "voter2"]  # Original voters
+    mock_database.add_voter_to_batch.return_value = True  # Successfully added
+    mock_database.get_vote_count_by_voter.return_value = 1
+    mock_parser.parse_estimation_input.return_value = ({"1234": 5}, [])
+    mock_database.upsert_vote.return_value = (True, False)
 
-        # Assertions
-        assert estimates == {"1234": 5}
-        assert has_updates  # Should be True since votes were stored
-        assert not all_complete  # Only 1 out of 3 voters
-        mock_database.upsert_vote.assert_called_once_with(1, "voter1", "1234", 5)
+    # Create service
+    service = VotingService(test_config, mock_database, mock_parser)
 
-    def test_submit_votes_validation_error(self, test_config: Config) -> None:
-        """Test vote submission with validation errors."""
-        # Mock dependencies
-        mock_database = MagicMock()
-        mock_parser = MagicMock()
+    # Create batch with matching issue
+    batch = BatchData(
+        id=1,
+        date="2024-01-01",
+        deadline="2024-01-02T00:00:00",
+        facilitator="facilitator",
+        issues=[IssueData(issue_number="1234", title="Test Issue", url="")],
+    )
 
-        # Setup mocks - return validation errors
-        mock_parser.parse_estimation_input.return_value = (
-            {},
-            ["#1234: 4 (must be one of: 1, 2, 3, 5, 8, 13, 21)"],
-        )
+    # Test vote submission succeeds and adds new voter
+    estimates, has_updates, all_complete = service.submit_votes("#1234: 5", "new_voter", batch)
 
-        # Create service
-        service = VotingService(test_config, mock_database, mock_parser)
+    # Verify voter was added
+    mock_database.add_voter_to_batch.assert_called_once_with(1, "new_voter")
+    assert estimates == {"1234": 5}
+    assert has_updates is True
 
-        # Create batch
-        batch = BatchData(
-            id=1, date="2024-01-01", deadline="2024-01-02T00:00:00", facilitator="facilitator"
-        )
 
-        # Test vote submission fails with validation error
-        with pytest.raises(ValidationError, match="Invalid story point values"):
-            service.submit_votes("#1234: 4", "voter1", batch)
+def test_voting_service_submit_votes_success(test_config: Config) -> None:
+    """Test successful vote submission."""
+    # Mock dependencies
+    mock_database = MagicMock()
+    mock_parser = MagicMock()
+
+    # Setup mocks
+    mock_database.get_batch_voters.return_value = [
+        "voter1",
+        "voter2",
+        "voter3",
+    ]  # voter1 is authorized
+    mock_parser.parse_estimation_input.return_value = ({"1234": 5}, [])
+    mock_database.upsert_vote.return_value = (True, False)
+    mock_database.get_vote_count_by_voter.return_value = 1
+
+    # Create service
+    service = VotingService(test_config, mock_database, mock_parser)
+
+    # Create batch with matching issue
+    batch = BatchData(
+        id=1,
+        date="2024-01-01",
+        deadline="2024-01-02T00:00:00",
+        facilitator="facilitator",
+        issues=[IssueData(issue_number="1234", title="Test Issue", url="")],
+    )
+
+    # Test vote submission
+    estimates, has_updates, all_complete = service.submit_votes("#1234: 5", "voter1", batch)
+
+    # Assertions
+    assert estimates == {"1234": 5}
+    assert has_updates  # Should be True since votes were stored
+    assert not all_complete  # Only 1 out of 3 voters
+    mock_database.upsert_vote.assert_called_once_with(1, "voter1", "1234", 5)
+
+
+def test_voting_service_submit_votes_validation_error(test_config: Config) -> None:
+    """Test vote submission with validation errors."""
+    # Mock dependencies
+    mock_database = MagicMock()
+    mock_parser = MagicMock()
+
+    # Setup mocks - return validation errors
+    mock_parser.parse_estimation_input.return_value = (
+        {},
+        ["#1234: 4 (must be one of: 1, 2, 3, 5, 8, 13, 21)"],
+    )
+
+    # Create service
+    service = VotingService(test_config, mock_database, mock_parser)
+
+    # Create batch
+    batch = BatchData(
+        id=1, date="2024-01-01", deadline="2024-01-02T00:00:00", facilitator="facilitator"
+    )
+
+    # Test vote submission fails with validation error
+    with pytest.raises(ValidationError, match="Invalid story point values"):
+        service.submit_votes("#1234: 4", "voter1", batch)
