@@ -22,7 +22,7 @@ Open a Bash console and run:
 
 ```bash
 # Create virtual environment
-mkvirtualenv zulip-bot --python=python3.11
+mkvirtualenv zulip-bot --python=python3.13
 
 # Navigate to your project directory
 cd ~/zulip-refinement-bot
@@ -76,17 +76,21 @@ python -m zulip_refinement_bot.migrations.cli upgrade
 
 ### 5. Deploy as ASGI Application
 
-PythonAnywhere supports ASGI applications in beta. Use the command-line tool:
+Create an ASGI web application using the PythonAnywhere CLI:
 
 ```bash
 # Install PythonAnywhere CLI tool
 pip install --upgrade pythonanywhere
 
-# Create ASGI web application
-pa create_webapp --domain yourusername.pythonanywhere.com --python=3.11 --virtualenv=zulip-bot --command="/home/yourusername/.virtualenvs/zulip-bot/bin/uvicorn --app-dir /home/yourusername/zulip-refinement-bot/src --uds \${DOMAIN_SOCKET} zulip_refinement_bot.fastapi_app:app"
-```
+# Create ASGI website
+pa website create --domain $USER.pythonanywhere.com --command "/home/$USER/.virtualenvs/zulip-bot/bin/uvicorn --app-dir /home/$USER/zulip-refinement-bot/src --uds \${DOMAIN_SOCKET} zulip_refinement_bot.fastapi_app:app"
 
-**Replace `yourusername` with your actual PythonAnywhere username.**
+If successful, you should see:
+```
+< All done! Your site is now live at $USER.pythonanywhere.com. >
+   \
+    ~<:>>>>>>>>>
+```
 
 ### 6. Alternative: Manual WSGI Setup
 
@@ -94,20 +98,20 @@ If ASGI deployment doesn't work, you can set up a traditional WSGI app:
 
 1. Go to the **Web** tab in your PythonAnywhere dashboard
 2. Click **Add a new web app**
-3. Choose **Manual configuration** and **Python 3.11**
-4. Edit the WSGI configuration file (`/var/www/yourusername_pythonanywhere_com_wsgi.py`):
+3. Choose **Manual configuration** and **Python 3.13**
+4. Edit the WSGI configuration file (`/var/www/${USER}_pythonanywhere_com_wsgi.py`):
 
 ```python
 import os
 import sys
 
 # Add your project directory to the Python path
-path = '/home/yourusername/zulip-refinement-bot'
+path = '/home/{}/zulip-refinement-bot'.format(os.environ['USER'])
 if path not in sys.path:
     sys.path.append(path)
 
 # Add the src directory to the Python path
-src_path = '/home/yourusername/zulip-refinement-bot/src'
+src_path = '/home/{}/zulip-refinement-bot/src'.format(os.environ['USER'])
 if src_path not in sys.path:
     sys.path.append(src_path)
 
@@ -122,7 +126,7 @@ from uvicorn.middleware.wsgi import WSGIMiddleware
 application = WSGIMiddleware(app)
 ```
 
-5. Set the **Virtualenv** to `/home/yourusername/.virtualenvs/zulip-bot`
+5. Set the **Virtualenv** to `/home/$USER/.virtualenvs/zulip-bot`
 6. Reload the web app
 
 ### 7. Configure Zulip Outgoing Webhook
@@ -130,18 +134,38 @@ application = WSGIMiddleware(app)
 1. Go to your Zulip organization settings
 2. Navigate to **Organization** > **Bots**
 3. Find your bot and click **Edit**
-4. Set the **Webhook URL** to: `https://yourusername.pythonanywhere.com/webhook`
+4. Set the **Webhook URL** to: `https://$USER.pythonanywhere.com/webhook`
 5. Save the configuration
 
-### 8. Test the Deployment
+### 6. Managing Your ASGI Website
 
-1. Send a direct message to your bot: `help`
-2. Check the PythonAnywhere logs:
+Check your website status:
+```bash
+# List all websites
+pa website get
+
+# Get details for your specific website
+pa website get --domain $USER.pythonanywhere.com
+
+# Reload after code changes
+pa website reload --domain $USER.pythonanywhere.com
+```
+
+### 7. Test the Deployment
+
+1. **Test health endpoints:**
+   - Visit: `https://$USER.pythonanywhere.com/health`
+   - Visit: `https://$USER.pythonanywhere.com/`
+
+2. **Check logs:**
    ```bash
    # View web app logs
-   tail -f /var/log/yourusername.pythonanywhere.com.error.log
-   tail -f /var/log/yourusername.pythonanywhere.com.access.log
+   tail -f /var/log/$USER.pythonanywhere.com.error.log
+   tail -f /var/log/$USER.pythonanywhere.com.access.log
+   tail -f /var/log/$USER.pythonanywhere.com.server.log
    ```
+
+3. **Send a direct message to your bot:** `help`
 
 ## Webhook URL Endpoints
 
@@ -164,7 +188,7 @@ Your deployed bot will respond to these endpoints:
 
 1. Check PythonAnywhere error logs:
    ```bash
-   tail -f /var/log/yourusername.pythonanywhere.com.error.log
+   tail -f /var/log/$USER.pythonanywhere.com.error.log
    ```
 
 2. Test locally first:
@@ -193,7 +217,7 @@ Your deployed bot will respond to these endpoints:
 ### Monitoring
 
 - Check logs regularly for errors
-- Monitor the health endpoint: `https://yourusername.pythonanywhere.com/health`
+- Monitor the health endpoint: `https://$USER.pythonanywhere.com/health`
 - Test bot functionality periodically
 
 ## Security Notes

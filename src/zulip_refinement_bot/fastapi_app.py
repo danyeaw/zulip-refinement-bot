@@ -35,13 +35,6 @@ app = FastAPI(
 )
 
 
-@app.on_event("startup")  # type: ignore[misc]
-async def startup_event() -> None:
-    """Initialize the bot on startup."""
-    get_bot_instance()  # Initialize bot instance
-    logger.info("FastAPI app started with bot instance")
-
-
 @app.on_event("shutdown")  # type: ignore[misc]
 async def shutdown_event() -> None:
     """Clean up on shutdown."""
