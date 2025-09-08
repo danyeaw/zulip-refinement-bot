@@ -29,14 +29,13 @@ def test_input_parser_valid_single_issue(parser: InputParser, mock_github_api: M
     content = """start batch
 https://github.com/conda/conda/issues/15169"""
 
-    mock_github_api.fetch_issue_title.return_value = "Fix memory leak in solver"
+    # No title fetching during parsing - titles fetched on-demand (BSSN)
 
     result = parser.parse_batch_input(content)
 
     assert result.success is True
     assert len(result.issues) == 1
     assert result.issues[0].issue_number == "15169"
-    assert result.issues[0].title == "Fix memory leak in solver"
     assert result.issues[0].url == "https://github.com/conda/conda/issues/15169"
     assert result.error == ""
 
@@ -56,7 +55,7 @@ https://github.com/conda/conda/issues/15167"""
         }
         return titles.get(issue_number)
 
-    mock_github_api.fetch_issue_title.side_effect = mock_fetch_title
+    # No title fetching during parsing - titles fetched on-demand (BSSN)
 
     result = parser.parse_batch_input(content)
 
@@ -85,7 +84,7 @@ def test_input_parser_duplicate_issue_numbers(parser: InputParser, mock_github_a
 https://github.com/conda/conda/issues/15169
 https://github.com/conda/conda/issues/15169"""
 
-    mock_github_api.fetch_issue_title.return_value = "Fix memory leak"
+    # No title fetching during parsing - titles fetched on-demand (BSSN)
 
     result = parser.parse_batch_input(content)
 
@@ -99,7 +98,7 @@ def test_input_parser_too_many_issues(parser: InputParser, mock_github_api: Magi
     issues_list = [f"https://github.com/conda/conda/issues/{1000 + i}" for i in range(7)]
     content = "start batch\n" + "\n".join(issues_list)
 
-    mock_github_api.fetch_issue_title.return_value = "Test issue"
+    # No title fetching during parsing - titles fetched on-demand (BSSN)
 
     result = parser.parse_batch_input(content)
 
@@ -108,17 +107,17 @@ def test_input_parser_too_many_issues(parser: InputParser, mock_github_api: Magi
 
 
 def test_input_parser_title_truncation(parser: InputParser, mock_github_api: MagicMock):
-    """Test title truncation for long GitHub issue titles."""
-    long_title = "A" * 60  # Longer than max_title_length (50)
+    """Test that titles are no longer truncated (BSSN: titles fetched on-demand)."""
     content = "start batch\nhttps://github.com/conda/conda/issues/15169"
 
-    mock_github_api.fetch_issue_title.return_value = long_title
+    # No title fetching during parsing - titles fetched on-demand (BSSN)
 
     result = parser.parse_batch_input(content)
 
     assert result.success is True
-    assert len(result.issues[0].title) == 50  # max_title_length
-    assert result.issues[0].title.endswith("...")
+    # BSSN: No title stored during parsing, titles fetched on-demand
+    assert result.issues[0].issue_number == "15169"
+    assert result.issues[0].url == "https://github.com/conda/conda/issues/15169"
 
 
 def test_input_parser_empty_input(parser: InputParser):
@@ -132,16 +131,18 @@ def test_input_parser_empty_input(parser: InputParser):
 
 
 def test_input_parser_github_api_failure(parser: InputParser, mock_github_api: MagicMock):
-    """Test GitHub URL parsing when API fails."""
+    """Test GitHub URL parsing when API fails (BSSN: still succeeds, validation deferred)."""
     content = """start batch
 https://github.com/conda/conda/issues/99999"""
 
-    mock_github_api.fetch_issue_title.return_value = None
+    # No title fetching during parsing - titles fetched on-demand (BSSN)
 
     result = parser.parse_batch_input(content)
 
-    assert result.success is False
-    assert "Could not fetch issue #99999" in result.error
+    # BSSN: Parser succeeds, title fetching happens on-demand
+    assert result.success is True
+    assert len(result.issues) == 1
+    assert result.issues[0].issue_number == "99999"
 
 
 def test_input_parser_parse_estimation_input_valid(parser: InputParser):

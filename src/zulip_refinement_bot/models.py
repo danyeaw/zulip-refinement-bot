@@ -11,8 +11,7 @@ class IssueData(BaseModel):
     """Represents a GitHub issue."""
 
     issue_number: str = Field(..., description="GitHub issue number")
-    title: str = Field(..., description="Issue title")
-    url: str = Field(default="", description="GitHub issue URL")
+    url: str = Field(..., description="GitHub issue URL")
 
 
 class BatchData(BaseModel):

@@ -49,7 +49,6 @@ def test_database_manager_add_and_get_issues(
 
     for original, retrieved in zip(sample_issues, retrieved_issues, strict=False):
         assert retrieved.issue_number == original.issue_number
-        assert retrieved.title == original.title
         assert retrieved.url == original.url
 
 
@@ -68,7 +67,6 @@ def test_database_manager_get_active_batch_with_issues(
 
     for original, retrieved in zip(sample_issues, active_batch.issues, strict=False):
         assert retrieved.issue_number == original.issue_number
-        assert retrieved.title == original.title
         assert retrieved.url == original.url
 
 

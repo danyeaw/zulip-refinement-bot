@@ -185,3 +185,4 @@ logs/
 
 # Conda
 .conda/
+AGENTS.md

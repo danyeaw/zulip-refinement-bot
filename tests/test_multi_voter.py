@@ -14,9 +14,10 @@ from zulip_refinement_bot.services import BatchService, ResultsService, VotingSe
 
 
 @pytest.fixture
-def batch_service(test_config: Config, db_manager: DatabaseManager) -> BatchService:
+def batch_service(
+    test_config: Config, db_manager: DatabaseManager, mock_github_api: MagicMock
+) -> BatchService:
     """Create a BatchService for testing."""
-    mock_github_api = MagicMock()
     mock_parser = MagicMock()
     return BatchService(test_config, db_manager, mock_github_api, mock_parser)
 
@@ -29,9 +30,9 @@ def voting_service(test_config: Config, db_manager: DatabaseManager) -> VotingSe
 
 
 @pytest.fixture
-def results_service(test_config: Config) -> ResultsService:
+def results_service(test_config: Config, mock_github_api: MagicMock) -> ResultsService:
     """Create a ResultsService for testing."""
-    return ResultsService(test_config)
+    return ResultsService(test_config, mock_github_api)
 
 
 @pytest.fixture
@@ -40,11 +41,17 @@ def message_handler(
     batch_service: BatchService,
     voting_service: VotingService,
     results_service: ResultsService,
+    mock_github_api: MagicMock,
 ) -> MessageHandler:
     """Create a MessageHandler for testing."""
     mock_zulip_client = MagicMock()
     return MessageHandler(
-        test_config, mock_zulip_client, batch_service, voting_service, results_service
+        test_config,
+        mock_zulip_client,
+        batch_service,
+        voting_service,
+        results_service,
+        mock_github_api,
     )
 
 

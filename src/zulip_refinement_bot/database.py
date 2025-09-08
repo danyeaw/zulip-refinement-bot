@@ -81,7 +81,6 @@ class DatabaseManager(DatabaseInterface):
             issues = [
                 IssueData(
                     issue_number=issue_row["issue_number"],
-                    title=issue_row["title"],
                     url=issue_row["url"],
                 )
                 for issue_row in issues_cursor.fetchall()
@@ -122,8 +121,8 @@ class DatabaseManager(DatabaseInterface):
         """
         with sqlite3.connect(self.db_path) as conn:
             conn.executemany(
-                "INSERT INTO issues (batch_id, issue_number, title, url) VALUES (?, ?, ?, ?)",
-                [(batch_id, issue.issue_number, issue.title, issue.url) for issue in issues],
+                "INSERT INTO issues (batch_id, issue_number, url) VALUES (?, ?, ?)",
+                [(batch_id, issue.issue_number, issue.url) for issue in issues],
             )
             conn.commit()
 
@@ -144,7 +143,7 @@ class DatabaseManager(DatabaseInterface):
                 "SELECT * FROM issues WHERE batch_id = ? ORDER BY id", (batch_id,)
             )
             return [
-                IssueData(issue_number=row["issue_number"], title=row["title"], url=row["url"])
+                IssueData(issue_number=row["issue_number"], url=row["url"])
                 for row in cursor.fetchall()
             ]
 

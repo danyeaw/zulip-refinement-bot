@@ -396,13 +396,15 @@ class VotingService:
 class ResultsService:
     """Service for generating and analyzing estimation results."""
 
-    def __init__(self, config: Config) -> None:
+    def __init__(self, config: Config, github_api: GitHubAPIInterface) -> None:
         """Initialize results service.
 
         Args:
             config: Bot configuration
+            github_api: GitHub API interface
         """
         self.config = config
+        self.github_api = github_api
 
     def generate_results_content(
         self,
@@ -489,7 +491,11 @@ class ResultsService:
                 else:
                     cluster_info = f"({self._format_cluster_info(estimates, final_estimate)})"
 
-                results_content += f"Issue {issue.issue_number} - {issue.title}\n"
+                title = (
+                    self.github_api.fetch_issue_title_by_url(issue.url)
+                    or f"Issue {issue.issue_number}"
+                )
+                results_content += f"Issue {issue.issue_number} - {title}\n"
                 results_content += f"Estimates: {estimates_str}\n"
                 results_content += (
                     f"Cluster: {cluster_info} | Final: **{final_estimate} points**\n\n"
@@ -500,7 +506,11 @@ class ResultsService:
             results_content += "⚠️ **DISCUSSION NEEDED**\n"
             for issue, estimates, clusters in discussion_issues:
                 estimates_str = ", ".join(map(str, estimates))
-                results_content += f"Issue {issue.issue_number} - {issue.title}\n"
+                title = (
+                    self.github_api.fetch_issue_title_by_url(issue.url)
+                    or f"Issue {issue.issue_number}"
+                )
+                results_content += f"Issue {issue.issue_number} - {title}\n"
                 results_content += f"Estimates: {estimates_str}\n"
 
                 if len(clusters) > 1:
@@ -579,7 +589,11 @@ class ResultsService:
             issue_num = issue.issue_number
             if issue_num in consensus_estimates:
                 points = consensus_estimates[issue_num]
-                results_content += f"**Issue {issue_num}** - {issue.title}: **{points} points**\n"
+                title = (
+                    self.github_api.fetch_issue_title_by_url(issue.url)
+                    or f"Issue {issue.issue_number}"
+                )
+                results_content += f"**Issue {issue_num}** - {title}: **{points} points**\n"
 
         # Show discussed issues with rationale
         final_estimates_dict = {est.issue_number: est for est in final_estimates}
@@ -587,8 +601,12 @@ class ResultsService:
             issue_num = issue.issue_number
             if issue_num in final_estimates_dict:
                 est = final_estimates_dict[issue_num]
+                title = (
+                    self.github_api.fetch_issue_title_by_url(issue.url)
+                    or f"Issue {issue.issue_number}"
+                )
                 results_content += (
-                    f"**Issue {issue_num}** - {issue.title}: **{est.final_points} points** "
+                    f"**Issue {issue_num}** - {title}: **{est.final_points} points** "
                 )
                 if est.rationale:
                     results_content += f"({est.rationale})\n"

@@ -262,7 +262,9 @@ def test_parse_voter_name_with_mention_format():
     from zulip_refinement_bot.handlers import MessageHandler
 
     # Create a minimal handler instance for testing
-    handler = MessageHandler(MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock())
+    handler = MessageHandler(
+        MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock()
+    )
 
     # Test Zulip mention format
     result = handler._parse_voter_name("@**jaimergp**")
@@ -309,6 +311,7 @@ def test_add_voter_updates_batch_message():
         mock_batch_service,
         mock_voting_service,
         mock_results_service,
+        MagicMock(),  # github_api
     )
 
     # Test message
@@ -358,6 +361,7 @@ def test_remove_voter_updates_batch_message():
         mock_batch_service,
         mock_voting_service,
         mock_results_service,
+        MagicMock(),  # github_api
     )
 
     # Test message
@@ -407,6 +411,7 @@ def test_no_update_when_voter_already_exists():
         mock_batch_service,
         mock_voting_service,
         mock_results_service,
+        MagicMock(),  # github_api
     )
 
     # Test message

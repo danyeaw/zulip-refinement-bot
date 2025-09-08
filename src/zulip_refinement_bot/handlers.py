@@ -12,7 +12,7 @@ import structlog
 from .business_hours import BusinessHoursCalculator
 from .config import Config
 from .exceptions import AuthorizationError, BatchError, ValidationError, VotingError
-from .interfaces import MessageHandlerInterface, ZulipClientInterface
+from .interfaces import GitHubAPIInterface, MessageHandlerInterface, ZulipClientInterface
 from .models import BatchData, FinalEstimate, IssueData
 from .services import BatchService, ResultsService, VotingService
 
@@ -29,6 +29,7 @@ class MessageHandler(MessageHandlerInterface):
         batch_service: BatchService,
         voting_service: VotingService,
         results_service: ResultsService,
+        github_api: GitHubAPIInterface,
     ) -> None:
         """Initialize message handler.
 
@@ -38,13 +39,38 @@ class MessageHandler(MessageHandlerInterface):
             batch_service: Batch management service
             voting_service: Voting service
             results_service: Results service
+            github_api: GitHub API interface
         """
         self.config = config
         self.zulip_client = zulip_client
         self.batch_service = batch_service
         self.voting_service = voting_service
         self.results_service = results_service
+        self.github_api = github_api
         self.business_hours_calc = BusinessHoursCalculator(config)
+
+    def _format_issue_list(self, issues: list[IssueData]) -> str:
+        """Format issue list with on-demand title fetching.
+
+        Args:
+            issues: List of issues to format
+
+        Returns:
+            Formatted issue list string
+        """
+        formatted_issues = []
+        for issue in issues:
+            title = self.github_api.fetch_issue_title_by_url(issue.url)
+            if title and issue.url:
+                formatted_issues.append(f"• #{issue.issue_number} - [{title}]({issue.url})")
+            elif title:
+                formatted_issues.append(f"• #{issue.issue_number} - {title}")
+            else:
+                formatted_issues.append(
+                    f"• #{issue.issue_number} - [Issue {issue.issue_number}]({issue.url})"
+                )
+
+        return "\n".join(formatted_issues)
 
     def handle_start_batch(self, message: dict[str, Any], content: str) -> None:
         """Handle batch creation request.
@@ -83,14 +109,7 @@ class MessageHandler(MessageHandlerInterface):
 
             deadline = datetime.fromisoformat(active_batch.deadline)
 
-            issue_list = "\n".join(
-                [
-                    f"• #{issue.issue_number} - [{issue.title}]({issue.url})"
-                    if issue.url
-                    else f"• #{issue.issue_number} - {issue.title}"
-                    for issue in active_batch.issues
-                ]
-            )
+            issue_list = self._format_issue_list(active_batch.issues)
 
             status_msg = f"""**📊 Active Batch Status**
 **Date**: {active_batch.date}
@@ -552,14 +571,7 @@ class MessageHandler(MessageHandlerInterface):
             deadline: Batch deadline
             batch_id: Database batch ID
         """
-        issue_list = "\n".join(
-            [
-                f"• #{issue.issue_number} - [{issue.title}]({issue.url})"
-                if issue.url
-                else f"• #{issue.issue_number} - {issue.title}"
-                for issue in issues
-            ]
-        )
+        issue_list = self._format_issue_list(issues)
 
         current_date = datetime.now(UTC).strftime("%Y-%m-%d")
         confirmation = f"""✅ **Batch created: {len(issues)} issues**
@@ -588,14 +600,7 @@ Posting to #{self.config.stream_name} now..."""
             deadline: Batch deadline
             facilitator: Facilitator name
         """
-        issue_list = "\n".join(
-            [
-                f"• #{issue.issue_number} - [{issue.title}]({issue.url})"
-                if issue.url
-                else f"• #{issue.issue_number} - {issue.title}"
-                for issue in issues
-            ]
-        )
+        issue_list = self._format_issue_list(issues)
 
         batch_voters = self.batch_service.database.get_batch_voters(batch_id)
         voter_mentions = ", ".join([f"@**{voter}**" for voter in batch_voters])
@@ -681,14 +686,7 @@ Posting to #{self.config.stream_name} now..."""
             # Reconstruct the batch message with updated vote count
             deadline = datetime.fromisoformat(active_batch.deadline)
 
-            issue_list = "\n".join(
-                [
-                    f"• #{issue.issue_number} - [{issue.title}]({issue.url})"
-                    if issue.url
-                    else f"• #{issue.issue_number} - {issue.title}"
-                    for issue in active_batch.issues
-                ]
-            )
+            issue_list = self._format_issue_list(active_batch.issues)
 
             batch_voters = self.batch_service.database.get_batch_voters(batch_id)
             voter_mentions = ", ".join([f"@**{voter}**" for voter in batch_voters])
@@ -854,14 +852,7 @@ Posting to #{self.config.stream_name} now..."""
 
         try:
             deadline = datetime.fromisoformat(batch.deadline)
-            issue_list = "\n".join(
-                [
-                    f"• #{issue.issue_number} - [{issue.title}]({issue.url})"
-                    if issue.url
-                    else f"• #{issue.issue_number} - {issue.title}"
-                    for issue in batch.issues
-                ]
-            )
+            issue_list = self._format_issue_list(batch.issues)
 
             voter_mentions = ", ".join([f"@**{voter}**" for voter in self.config.voter_list])
 
@@ -948,14 +939,7 @@ Posting to #{self.config.stream_name} now..."""
 
         try:
             deadline = datetime.fromisoformat(batch.deadline)
-            issue_list = "\n".join(
-                [
-                    f"• #{issue.issue_number} - [{issue.title}]({issue.url})"
-                    if issue.url
-                    else f"• #{issue.issue_number} - {issue.title}"
-                    for issue in batch.issues
-                ]
-            )
+            issue_list = self._format_issue_list(batch.issues)
 
             voter_mentions = ", ".join([f"@**{voter}**" for voter in self.config.voter_list])
 

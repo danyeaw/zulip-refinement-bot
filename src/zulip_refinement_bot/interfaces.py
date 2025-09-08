@@ -12,12 +12,10 @@ class GitHubAPIInterface(ABC):
     """Interface for GitHub API operations."""
 
     @abstractmethod
-    def fetch_issue_title(self, owner: str, repo: str, issue_number: str) -> str | None:
-        """Fetch issue title from GitHub API."""
+    def parse_github_url(self, url: str) -> tuple[str, str, str] | None: ...
 
     @abstractmethod
-    async def fetch_issue_title_async(self, owner: str, repo: str, issue_number: str) -> str | None:
-        """Async version of fetch_issue_title."""
+    def fetch_issue_title_by_url(self, url: str) -> str | None: ...
 
 
 class DatabaseInterface(ABC):

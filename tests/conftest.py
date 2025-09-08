@@ -74,6 +74,14 @@ def mock_zulip_client() -> MagicMock:
 
 
 @pytest.fixture
+def mock_github_api():
+    """Create a mock GitHub API for testing."""
+    from unittest.mock import MagicMock
+
+    return MagicMock()
+
+
+@pytest.fixture
 def sample_message() -> dict:
     """Create a sample Zulip message for testing."""
     return {
@@ -93,12 +101,10 @@ def sample_issues() -> list:
     return [
         IssueData(
             issue_number="1234",
-            title="Fix memory leak in solver",
             url="https://github.com/conda/conda/issues/1234",
         ),
         IssueData(
             issue_number="1235",
-            title="Improve dependency resolution",
             url="https://github.com/conda/conda/issues/1235",
         ),
     ]

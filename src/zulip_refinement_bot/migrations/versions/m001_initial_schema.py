@@ -82,7 +82,8 @@ class InitialSchemaMigration(Migration, SchemaValidationMixin):
             return False
 
         issues_schema = self.get_table_schema(conn, "issues")
-        required_columns = {"id", "batch_id", "issue_number", "title", "url"}
+        # Core columns that must exist (title is optional after migration 005)
+        required_columns = {"id", "batch_id", "issue_number", "url"}
         actual_columns = {col["name"] for col in issues_schema}
 
         if not required_columns.issubset(actual_columns):

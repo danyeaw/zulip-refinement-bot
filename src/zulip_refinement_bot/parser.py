@@ -60,7 +60,6 @@ class InputParser(ParserInterface):
         seen_numbers: set[str] = set()
 
         for line in lines:
-            # Try GitHub URL format
             github_match = self.GITHUB_URL_PATTERN.match(line)
             if github_match:
                 owner, repo, issue_number = github_match.groups()
@@ -70,30 +69,10 @@ class InputParser(ParserInterface):
                     logger.warning("Duplicate issue number", issue_number=issue_number)
                     return ParseResult(success=False, issues=[], error=error_msg)
 
-                # Fetch title from GitHub API
-                title = self.github_api.fetch_issue_title(owner, repo, issue_number)
-                if title is None:
-                    error_msg = (
-                        f"❌ Could not fetch issue #{issue_number} from GitHub. "
-                        "Please check the URL and ensure the issue exists."
-                    )
-                    logger.error(
-                        "Failed to fetch issue title",
-                        owner=owner,
-                        repo=repo,
-                        issue_number=issue_number,
-                    )
-                    return ParseResult(success=False, issues=[], error=error_msg)
-
-                # Truncate title if too long
-                if len(title) > self.config.max_title_length:
-                    title = title[: self.config.max_title_length - 3] + "..."
-
                 seen_numbers.add(issue_number)
-                issues.append(IssueData(issue_number=issue_number, title=title, url=line))
+                issues.append(IssueData(issue_number=issue_number, url=line))
                 continue
 
-            # Invalid format
             error_msg = (
                 f"❌ Invalid format: '{line}'. "
                 "Please use GitHub issue URLs like: "

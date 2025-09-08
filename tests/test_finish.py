@@ -17,9 +17,10 @@ from zulip_refinement_bot.services import BatchService, ResultsService, VotingSe
 
 # Global fixtures for all test classes
 @pytest.fixture
-def batch_service(test_config: Config, db_manager: DatabaseManager) -> BatchService:
+def batch_service(
+    test_config: Config, db_manager: DatabaseManager, mock_github_api: MagicMock
+) -> BatchService:
     """Create a BatchService for testing."""
-    mock_github_api = MagicMock()
     mock_parser = MagicMock()
     return BatchService(test_config, db_manager, mock_github_api, mock_parser)
 
@@ -32,9 +33,9 @@ def voting_service(test_config: Config, db_manager: DatabaseManager) -> VotingSe
 
 
 @pytest.fixture
-def results_service(test_config: Config) -> ResultsService:
+def results_service(test_config: Config, mock_github_api: MagicMock) -> ResultsService:
     """Create a ResultsService for testing."""
-    return ResultsService(test_config)
+    return ResultsService(test_config, mock_github_api)
 
 
 @pytest.fixture
@@ -43,11 +44,17 @@ def message_handler(
     batch_service: BatchService,
     voting_service: VotingService,
     results_service: ResultsService,
+    mock_github_api: MagicMock,
 ) -> MessageHandler:
     """Create a MessageHandler for testing."""
     mock_zulip_client = MagicMock()
     return MessageHandler(
-        test_config, mock_zulip_client, batch_service, voting_service, results_service
+        test_config,
+        mock_zulip_client,
+        batch_service,
+        voting_service,
+        results_service,
+        mock_github_api,
     )
 
 
@@ -59,8 +66,8 @@ def active_batch_discussing(db_manager: DatabaseManager) -> BatchData:
 
     # Add issues
     issues = [
-        IssueData(issue_number="1234", title="Test Issue 1", url=""),
-        IssueData(issue_number="1235", title="Test Issue 2", url=""),
+        IssueData(issue_number="1234", url="https://github.com/test/repo/issues/1234"),
+        IssueData(issue_number="1235", url="https://github.com/test/repo/issues/1235"),
     ]
     db_manager.add_issues_to_batch(batch_id, issues)
 
@@ -294,8 +301,20 @@ def test_message_handler_handle_discussion_complete_wrong_status(
 
 def test_results_service_generate_discussion_complete_results(
     results_service: ResultsService,
+    mock_github_api: MagicMock,
 ) -> None:
     """Test generating finish results."""
+
+    # Configure mock to return expected titles
+    def mock_fetch_title(url: str) -> str:
+        if "1234" in url:
+            return "Test Issue 1"
+        elif "1235" in url:
+            return "Test Issue 2"
+        return "Unknown Issue"
+
+    mock_github_api.fetch_issue_title_by_url.side_effect = mock_fetch_title
+
     # Create test data
     batch = BatchData(
         id=1,
@@ -303,8 +322,8 @@ def test_results_service_generate_discussion_complete_results(
         deadline="2024-03-27T14:00:00+00:00",
         facilitator="Test User",
         issues=[
-            IssueData(issue_number="1234", title="Test Issue 1", url=""),
-            IssueData(issue_number="1235", title="Test Issue 2", url=""),
+            IssueData(issue_number="1234", url="https://github.com/test/repo/issues/1234"),
+            IssueData(issue_number="1235", url="https://github.com/test/repo/issues/1235"),
         ],
     )
 
@@ -333,8 +352,12 @@ def test_results_service_generate_discussion_complete_results(
 
 def test_results_service_generate_results_content_with_discussion_needed(
     results_service: ResultsService,
+    mock_github_api: MagicMock,
 ) -> None:
     """Test that results content includes discussion instructions when needed."""
+    # Configure mock to return expected title
+    mock_github_api.fetch_issue_title_by_url.return_value = "Test Issue 1"
+
     # Create test data with wide spread votes (will need discussion)
     batch = BatchData(
         id=1,
@@ -342,7 +365,7 @@ def test_results_service_generate_results_content_with_discussion_needed(
         deadline="2024-03-27T14:00:00+00:00",
         facilitator="Test User",
         issues=[
-            IssueData(issue_number="1234", title="Test Issue 1", url=""),
+            IssueData(issue_number="1234", url="https://github.com/test/repo/issues/1234"),
         ],
     )
 

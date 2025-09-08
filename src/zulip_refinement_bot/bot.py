@@ -91,7 +91,6 @@ finish #15169: 5 After discussion we agreed it's medium complexity, #15168: 3 Si
 **Rules:**
 • Maximum {self.config.max_issues_per_batch} issues per batch
 • Only one active batch at a time
-• Issue titles truncated at {self.config.max_title_length} characters
 • {self.config.default_deadline_hours}-hour default deadline
 • Valid story points: 1, 2, 3, 5, 8, 13, 21
 • Must vote for all issues in the batch
@@ -220,10 +219,8 @@ finish #15169: 5 After discussion we agreed it's medium complexity, #15168: 3 Si
                 deadline=deadline,
                 now=now,
             )
-            # Complete the batch automatically
             try:
                 self.batch_service.complete_batch(active_batch.id, active_batch.facilitator)
-                # The message handler will process the completion and post results
                 self.message_handler._process_batch_completion(active_batch, auto_completed=False)
             except Exception as e:
                 logger.error(

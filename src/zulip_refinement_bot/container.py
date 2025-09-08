@@ -75,7 +75,9 @@ class Container:
 
     def get_results_service(self) -> ResultsService:
         if ResultsService not in self._instances:
-            self._instances[ResultsService] = ResultsService(config=self.config)
+            self._instances[ResultsService] = ResultsService(
+                config=self.config, github_api=self.get_github_api()
+            )
         return self._instances[ResultsService]  # type: ignore[return-value]
 
     def get_message_handler(self) -> MessageHandlerInterface:
@@ -86,6 +88,7 @@ class Container:
                 batch_service=self.get_batch_service(),
                 voting_service=self.get_voting_service(),
                 results_service=self.get_results_service(),
+                github_api=self.get_github_api(),
             )
         return self._instances[MessageHandlerInterface]  # type: ignore[return-value]
 

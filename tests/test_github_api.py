@@ -29,7 +29,7 @@ def test_github_api_fetch_issue_title_success(mock_client_class: MagicMock):
 
     # Test
     api = GitHubAPI()
-    title = api.fetch_issue_title("conda", "conda", "15169")
+    title = api.fetch_issue_title_by_url("https://github.com/conda/conda/issues/15169")
 
     # Verify
     assert title == "Fix memory leak in solver"
@@ -51,7 +51,7 @@ def test_github_api_fetch_issue_title_not_found(mock_client_class: MagicMock):
 
     # Test
     api = GitHubAPI()
-    title = api.fetch_issue_title("conda", "conda", "99999")
+    title = api.fetch_issue_title_by_url("https://github.com/conda/conda/issues/99999")
 
     # Verify
     assert title is None
@@ -70,7 +70,7 @@ def test_github_api_fetch_issue_title_api_error(mock_client_class: MagicMock):
 
     # Test
     api = GitHubAPI()
-    title = api.fetch_issue_title("conda", "conda", "15169")
+    title = api.fetch_issue_title_by_url("https://github.com/conda/conda/issues/15169")
 
     # Verify
     assert title is None
@@ -86,7 +86,7 @@ def test_github_api_fetch_issue_title_network_error(mock_client_class: MagicMock
 
     # Test
     api = GitHubAPI()
-    title = api.fetch_issue_title("conda", "conda", "15169")
+    title = api.fetch_issue_title_by_url("https://github.com/conda/conda/issues/15169")
 
     # Verify
     assert title is None
@@ -102,7 +102,7 @@ def test_github_api_fetch_issue_title_timeout(mock_client_class: MagicMock):
 
     # Test
     api = GitHubAPI()
-    title = api.fetch_issue_title("conda", "conda", "15169")
+    title = api.fetch_issue_title_by_url("https://github.com/conda/conda/issues/15169")
 
     # Verify
     assert title is None
@@ -122,7 +122,7 @@ def test_github_api_fetch_issue_title_json_error(mock_client_class: MagicMock):
 
     # Test
     api = GitHubAPI()
-    title = api.fetch_issue_title("conda", "conda", "15169")
+    title = api.fetch_issue_title_by_url("https://github.com/conda/conda/issues/15169")
 
     # Verify
     assert title is None
@@ -142,7 +142,7 @@ def test_github_api_fetch_issue_title_custom_timeout(mock_client_class: MagicMoc
 
     # Test
     api = GitHubAPI(timeout=5.0)
-    title = api.fetch_issue_title("conda", "conda", "15169")
+    title = api.fetch_issue_title_by_url("https://github.com/conda/conda/issues/15169")
 
     # Verify
     assert title == "Test Issue"

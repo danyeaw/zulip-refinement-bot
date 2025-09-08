@@ -22,7 +22,7 @@ class Config(BaseSettings):
     stream_name: str = "conda-maintainers"
     default_deadline_hours: int = 48
     max_issues_per_batch: int = 6
-    max_title_length: int = 50
+    max_title_length: int = 200
 
     # Holiday configuration
     holiday_country: str = "US"
