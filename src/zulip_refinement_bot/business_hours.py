@@ -27,11 +27,17 @@ class BusinessHoursCalculator:
             current_year = datetime.now().year
             holiday_calendar = {}
 
-            for year in [current_year, current_year + 1]:
-                year_holidays = holidays.country_holidays(self.config.holiday_country, years=year)
-                holiday_calendar.update(
-                    {date.strftime("%Y-%m-%d"): name for date, name in year_holidays.items()}
-                )
+            countries = [country.strip() for country in self.config.holiday_country.split(",")]
+
+            for country in countries:
+                if not country:
+                    continue
+
+                for year in [current_year, current_year + 1]:
+                    year_holidays = holidays.country_holidays(country, years=year)
+                    holiday_calendar.update(
+                        {date.strftime("%Y-%m-%d"): name for date, name in year_holidays.items()}
+                    )
 
             logger.info(
                 f"Loaded {len(holiday_calendar)} holidays for {self.config.holiday_country}"
