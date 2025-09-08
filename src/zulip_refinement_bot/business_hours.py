@@ -118,7 +118,6 @@ class BusinessHoursCalculator:
     def format_business_deadline(self, deadline: datetime) -> str:
         local_deadline = deadline.astimezone(UTC)
         formatted = local_deadline.strftime("%Y-%m-%d %H:%M %Z")
-        formatted += " (excluding weekends/holidays)"
 
         holiday_info = self.get_holiday_info(deadline)
         if holiday_info:

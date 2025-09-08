@@ -613,7 +613,9 @@ Posting to #{self.config.stream_name} now..."""
         example_format = ", ".join(example_parts)
 
         deadline_str = self.business_hours_calc.format_business_deadline(deadline)
-        hours_text = f"({self.config.default_deadline_hours} hours from now)"
+        hours_text = (
+            f"({self.config.default_deadline_hours} hours from now excluding weekends/holidays)"
+        )
 
         topic_content = f"""**📦 BATCH REFINEMENT**
 **Stories**:
@@ -710,7 +712,9 @@ Posting to #{self.config.stream_name} now..."""
             )
 
             deadline_str = self.business_hours_calc.format_business_deadline(deadline)
-            hours_text = f"({self.config.default_deadline_hours} hours from now)"
+            hours_text = (
+                f"({self.config.default_deadline_hours} hours from now excluding weekends/holidays)"
+            )
 
             topic_content = f"""**📦 BATCH REFINEMENT**
 **Stories**:
@@ -878,7 +882,9 @@ Posting to #{self.config.stream_name} now..."""
             )
 
             deadline_str = self.business_hours_calc.format_business_deadline(deadline)
-            hours_text = f"({self.config.default_deadline_hours} hours from now)"
+            hours_text = (
+                f"({self.config.default_deadline_hours} hours from now excluding weekends/holidays)"
+            )
 
             completed_content = f"""**📦 BATCH REFINEMENT - COMPLETED** ({completion_reason})
 **Stories**:
@@ -962,7 +968,9 @@ Posting to #{self.config.stream_name} now..."""
             )
 
             deadline_str = self.business_hours_calc.format_business_deadline(deadline)
-            hours_text = f"({self.config.default_deadline_hours} hours from now)"
+            hours_text = (
+                f"({self.config.default_deadline_hours} hours from now excluding weekends/holidays)"
+            )
 
             discussion_content = f"""**📦 BATCH REFINEMENT - DISCUSSION PHASE** 🗣️
 **Stories**:

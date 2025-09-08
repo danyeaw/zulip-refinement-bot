@@ -148,7 +148,6 @@ def test_business_hours_format_business_deadline_basic(calculator: BusinessHours
     deadline = datetime(2024, 1, 8, 14, 0, tzinfo=UTC)
     result = calculator.format_business_deadline(deadline)
     assert "2024-01-08 14:00" in result
-    assert "excluding weekends/holidays" in result
 
 
 def test_business_hours_format_business_deadline_with_holiday(
@@ -267,4 +266,3 @@ def test_business_hours_format_deadline_skip_weekends_holidays(
     deadline = datetime(2024, 1, 8, 14, 0, tzinfo=UTC)
     result = calculator_skip_weekends_holidays.format_business_deadline(deadline)
     assert "2024-01-08 14:00" in result
-    assert "excluding weekends/holidays" in result
