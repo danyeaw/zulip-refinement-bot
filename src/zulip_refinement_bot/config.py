@@ -32,7 +32,7 @@ class Config(BaseSettings):
         "Dan Yeaw",
         "Daniel Holth",
         "Jannis Leidel",
-        "Mahe Iyer",
+        "Mahe Iram Khan",
         "Ryan Keith",
         "Sophia Castellarin",
         "Travis Hathaway",
