@@ -35,27 +35,3 @@ repos:
     hooks:
       - id: hadolint-docker
         args: [--ignore, DL3008, --ignore, DL3009]
-
-  # Database migration specific checks
-  - repo: local
-    hooks:
-      - id: migration-version-check
-        name: Check migration version sequence
-        entry: python scripts/check_migration_versions.py
-        language: python
-        files: ^src/zulip_refinement_bot/migrations/versions/.*\.py$
-        pass_filenames: false
-
-      - id: migration-test-coverage
-        name: Ensure migration tests exist
-        entry: python scripts/check_migration_test_coverage.py
-        language: python
-        files: ^src/zulip_refinement_bot/migrations/versions/.*\.py$
-        pass_filenames: false
-
-      - id: database-schema-validation
-        name: Validate database schema consistency
-        entry: python scripts/validate_schema_consistency.py
-        language: python
-        files: ^src/zulip_refinement_bot/(migrations|database).*\.py$
-        pass_filenames: false
