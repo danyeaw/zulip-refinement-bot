@@ -85,8 +85,9 @@ class MessageHandler(MessageHandlerInterface):
 
             issue_list = "\n".join(
                 [
-                    f"• #{issue.issue_number}: {issue.title}"
-                    + (f" ([link]({issue.url}))" if issue.url else "")
+                    f"• #{issue.issue_number} - [{issue.title}]({issue.url})"
+                    if issue.url
+                    else f"• #{issue.issue_number} - {issue.title}"
                     for issue in active_batch.issues
                 ]
             )
@@ -553,8 +554,9 @@ class MessageHandler(MessageHandlerInterface):
         """
         issue_list = "\n".join(
             [
-                f"• #{issue.issue_number}: {issue.title}"
-                + (f" ([link]({issue.url}))" if issue.url else "")
+                f"• #{issue.issue_number} - [{issue.title}]({issue.url})"
+                if issue.url
+                else f"• #{issue.issue_number} - {issue.title}"
                 for issue in issues
             ]
         )
@@ -588,9 +590,9 @@ Posting to #{self.config.stream_name} now..."""
         """
         issue_list = "\n".join(
             [
-                f"• #{issue.issue_number} - " + f"[{issue.title}]({issue.url})"
+                f"• #{issue.issue_number} - [{issue.title}]({issue.url})"
                 if issue.url
-                else f"{issue.title}"
+                else f"• #{issue.issue_number} - {issue.title}"
                 for issue in issues
             ]
         )
@@ -681,9 +683,9 @@ Posting to #{self.config.stream_name} now..."""
 
             issue_list = "\n".join(
                 [
-                    f"• #{issue.issue_number} - " + f"[{issue.title}]({issue.url})"
+                    f"• #{issue.issue_number} - [{issue.title}]({issue.url})"
                     if issue.url
-                    else f"{issue.title}"
+                    else f"• #{issue.issue_number} - {issue.title}"
                     for issue in active_batch.issues
                 ]
             )
@@ -854,9 +856,9 @@ Posting to #{self.config.stream_name} now..."""
             deadline = datetime.fromisoformat(batch.deadline)
             issue_list = "\n".join(
                 [
-                    f"• #{issue.issue_number} - " + f"[{issue.title}]({issue.url})"
+                    f"• #{issue.issue_number} - [{issue.title}]({issue.url})"
                     if issue.url
-                    else f"{issue.title}"
+                    else f"• #{issue.issue_number} - {issue.title}"
                     for issue in batch.issues
                 ]
             )
@@ -948,9 +950,9 @@ Posting to #{self.config.stream_name} now..."""
             deadline = datetime.fromisoformat(batch.deadline)
             issue_list = "\n".join(
                 [
-                    f"• #{issue.issue_number} - " + f"[{issue.title}]({issue.url})"
+                    f"• #{issue.issue_number} - [{issue.title}]({issue.url})"
                     if issue.url
-                    else f"{issue.title}"
+                    else f"• #{issue.issue_number} - {issue.title}"
                     for issue in batch.issues
                 ]
             )
