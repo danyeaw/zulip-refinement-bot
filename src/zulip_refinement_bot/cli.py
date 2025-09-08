@@ -148,6 +148,92 @@ def version() -> None:
 
 
 @app.command()  # type: ignore[misc]
+def server(
+    host: str = typer.Option(
+        "127.0.0.1",  # nosec B104 - Default to localhost for security, can be overridden
+        "--host",
+        "-h",
+        help="Host to bind the server to (use 0.0.0.0 for external access)",
+    ),
+    port: int = typer.Option(
+        8000,
+        "--port",
+        "-p",
+        help="Port to bind the server to",
+    ),
+    reload: bool = typer.Option(
+        False,
+        "--reload",
+        "-r",
+        help="Enable auto-reload for development",
+    ),
+    config_file: Path | None = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="Path to configuration file (.env format)",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+    ),
+    log_level: str = typer.Option(
+        "INFO",
+        "--log-level",
+        "-l",
+        help="Logging level",
+        case_sensitive=False,
+    ),
+    log_format: str = typer.Option(
+        "console",
+        "--log-format",
+        "-f",
+        help="Log format (console or json)",
+        case_sensitive=False,
+    ),
+) -> None:
+    """Run the FastAPI webhook server for the Zulip Refinement Bot."""
+    import uvicorn
+
+    # Set up logging first
+    setup_logging(log_level, log_format)
+    logger = structlog.get_logger(__name__)
+
+    try:
+        # Load configuration to validate it
+        from .config import Config
+
+        if config_file:
+            Config(_env_file=config_file)
+        else:
+            Config()
+
+        logger.info(
+            "Starting FastAPI server for Zulip Refinement Bot",
+            host=host,
+            port=port,
+            reload=reload,
+        )
+
+        # Run the FastAPI server
+        uvicorn.run(
+            "zulip_refinement_bot.fastapi_app:app",
+            host=host,
+            port=port,
+            reload=reload,
+            log_level=log_level.lower(),
+        )
+
+    except KeyboardInterrupt:
+        logger.info("Server stopped by user")
+        console.print("\n👋 Server stopped gracefully")
+        sys.exit(0)
+    except Exception as e:
+        logger.error("Failed to start server", error=str(e))
+        console.print(f"❌ [red]Error:[/red] {e}")
+        sys.exit(1)
+
+
+@app.command()  # type: ignore[misc]
 def init_config(
     output: Path = typer.Option(
         Path(".env"),

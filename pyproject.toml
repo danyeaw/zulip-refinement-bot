@@ -37,6 +37,8 @@ dependencies = [
     "rich>=13.0.0",
     "typer>=0.9.0",
     "holidays>=0.34",
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.23.0",
 ]
 
 [project.optional-dependencies]
@@ -64,6 +66,7 @@ Issues = "https://github.com/yourusername/zulip-refinement-bot/issues"
 
 [project.scripts]
 zulip-refinement-bot = "zulip_refinement_bot.cli:main"
+zulip-refinement-bot-server = "zulip_refinement_bot.fastapi_app:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/zulip_refinement_bot"]
@@ -96,6 +99,9 @@ strict_equality = true
 module = "zulip.*"
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = "fastapi.*"
+ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "tests.*"
@@ -105,6 +111,10 @@ disallow_untyped_decorators = false
 
 [[tool.mypy.overrides]]
 module = "zulip_refinement_bot.cli"
+disallow_untyped_decorators = false
+
+[[tool.mypy.overrides]]
+module = "zulip_refinement_bot.fastapi_app"
 disallow_untyped_decorators = false
 
 # Pytest configuration
