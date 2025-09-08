@@ -35,6 +35,7 @@ def test_config(temp_db: Path) -> Config:
         zulip_email="test@example.com",
         zulip_api_key="test_api_key",
         zulip_site="https://test.zulipchat.com",
+        zulip_token="test_webhook_token",
         database_path=temp_db,
         stream_name="test-stream",
     )

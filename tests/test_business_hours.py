@@ -17,6 +17,7 @@ def config() -> Config:
         zulip_email="test@example.com",
         zulip_api_key="test-key",
         zulip_site="https://test.zulipchat.com",
+        zulip_token="test_token",
         holiday_country="US",
         custom_holidays="2024-12-25,2024-01-01",
     )
@@ -29,6 +30,7 @@ def config_skip_weekends_holidays() -> Config:
         zulip_email="test@example.com",
         zulip_api_key="test-key",
         zulip_site="https://test.zulipchat.com",
+        zulip_token="test_token",
         holiday_country="US",
         custom_holidays="2024-12-25,2024-01-01",
     )
@@ -165,6 +167,7 @@ def test_business_hours_utc_handling() -> None:
         zulip_email="test@example.com",
         zulip_api_key="test-key",
         zulip_site="https://test.zulipchat.com",
+        zulip_token="test_token",
         holiday_country="US",
     )
 
@@ -183,6 +186,7 @@ def test_business_hours_config_custom_holiday_dates_parsing() -> None:
         zulip_email="test@example.com",
         zulip_api_key="test-key",
         zulip_site="https://test.zulipchat.com",
+        zulip_token="test_token",
         custom_holidays="2024-12-25, 2024-01-01, 2024-07-04",
     )
 
@@ -196,6 +200,7 @@ def test_business_hours_config_empty_custom_holidays() -> None:
         zulip_email="test@example.com",
         zulip_api_key="test-key",
         zulip_site="https://test.zulipchat.com",
+        zulip_token="test_token",
         custom_holidays="",
     )
 
@@ -208,6 +213,7 @@ def test_business_hours_config_whitespace_custom_holidays() -> None:
         zulip_email="test@example.com",
         zulip_api_key="test-key",
         zulip_site="https://test.zulipchat.com",
+        zulip_token="test_token",
         custom_holidays="  2024-12-25  ,  , 2024-01-01  ",
     )
 

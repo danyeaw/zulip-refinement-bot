@@ -5,7 +5,7 @@ This guide explains how to deploy the FastAPI version of the Zulip Refinement Bo
 ## Prerequisites
 
 1. A PythonAnywhere account (free tier works)
-2. Your Zulip bot credentials (email, API key, site URL)
+2. Your Zulip bot credentials (email, API key, site URL, webhook token)
 3. Access to your Zulip organization's bot settings
 
 ## Deployment Steps
@@ -45,6 +45,7 @@ cat > .env << 'EOF'
 ZULIP_EMAIL=your-bot@yourdomain.zulipchat.com
 ZULIP_API_KEY=your_api_key_here
 ZULIP_SITE=https://yourdomain.zulipchat.com
+ZULIP_TOKEN=your_webhook_token_here
 
 # Bot configuration
 STREAM_NAME=conda-maintainers
@@ -61,7 +62,7 @@ LOG_FORMAT=json
 EOF
 ```
 
-**Important:** Replace the placeholders with your actual Zulip bot credentials.
+**Important:** Replace the placeholders with your actual Zulip bot credentials. The webhook token can be found in your Zulip bot's outgoing webhook configuration and is required for security.
 
 ### 4. Set Up Database
 

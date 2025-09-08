@@ -71,6 +71,11 @@ async def zulip_webhook(request: Request) -> JSONResponse:
         payload = await request.json()
         logger.debug("Received webhook payload", payload=payload)
 
+        # Verify webhook token FIRST before any other processing
+        if not _verify_webhook_token(payload):
+            logger.warning("Invalid webhook token", payload=payload)
+            raise HTTPException(status_code=401, detail="Invalid webhook token")
+
         message_data = _convert_webhook_to_message(payload)
         if not message_data:
             logger.warning("Invalid webhook payload", payload=payload)
@@ -86,6 +91,27 @@ async def zulip_webhook(request: Request) -> JSONResponse:
     except Exception as e:
         logger.error("Error processing webhook", error=str(e), exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error processing webhook: {str(e)}") from e
+
+
+def _verify_webhook_token(payload: dict[str, Any]) -> bool:
+    """Verify the webhook token from Zulip."""
+    try:
+        config = Config()
+        expected_token = config.zulip_token
+
+        received_token = payload.get("token")
+        if not received_token:
+            logger.warning("No token found in webhook payload")
+            return False
+
+        if received_token != expected_token:
+            logger.warning("Token mismatch in webhook payload")
+            return False
+
+        return True
+    except Exception as e:
+        logger.error("Error verifying webhook token", error=str(e))
+        return False
 
 
 def _convert_webhook_to_message(payload: dict[str, Any]) -> dict[str, Any] | None:

@@ -16,6 +16,7 @@ class Config(BaseSettings):
     zulip_email: str
     zulip_api_key: str
     zulip_site: str
+    zulip_token: str
 
     # Bot configuration
     stream_name: str = "conda-maintainers"

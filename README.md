@@ -67,7 +67,10 @@ Required settings:
 ZULIP_EMAIL=your-bot@yourdomain.zulipchat.com
 ZULIP_API_KEY=your_api_key_here
 ZULIP_SITE=https://yourdomain.zulipchat.com
+ZULIP_TOKEN=your_webhook_token_here
 ```
+
+**Note:** The `ZULIP_TOKEN` is required for webhook mode and can be found in your Zulip bot's outgoing webhook configuration. This token is used to verify that incoming webhook requests are legitimate.
 
 Optional settings:
 

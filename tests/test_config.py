@@ -14,6 +14,7 @@ def test_config_with_env_vars(monkeypatch):
     monkeypatch.setenv("ZULIP_EMAIL", "test@example.com")
     monkeypatch.setenv("ZULIP_API_KEY", "test_key")
     monkeypatch.setenv("ZULIP_SITE", "https://test.zulipchat.com")
+    monkeypatch.setenv("ZULIP_TOKEN", "test_webhook_token")
     monkeypatch.setenv("STREAM_NAME", "custom-stream")
     monkeypatch.setenv("DEFAULT_DEADLINE_HOURS", "72")
 
@@ -22,6 +23,7 @@ def test_config_with_env_vars(monkeypatch):
     assert config.zulip_email == "test@example.com"
     assert config.zulip_api_key == "test_key"
     assert config.zulip_site == "https://test.zulipchat.com"
+    assert config.zulip_token == "test_webhook_token"
     assert config.stream_name == "custom-stream"
     assert config.default_deadline_hours == 72
 
@@ -33,6 +35,7 @@ def test_config_defaults():
             zulip_email="test@example.com",
             zulip_api_key="test_key",
             zulip_site="https://test.zulipchat.com",
+            zulip_token="test_token",
             database_path=Path(tmpdir) / "test.db",
         )
 
@@ -70,6 +73,7 @@ def test_config_database_path_creation():
             zulip_email="test@example.com",
             zulip_api_key="test_key",
             zulip_site="https://test.zulipchat.com",
+            zulip_token="test_token",
             database_path=db_path,
         )
 
@@ -82,6 +86,7 @@ def test_config_from_env_file():
         f.write("ZULIP_EMAIL=env@example.com\n")
         f.write("ZULIP_API_KEY=env_key\n")
         f.write("ZULIP_SITE=https://env.zulipchat.com\n")
+        f.write("ZULIP_TOKEN=env_token\n")
         f.write("STREAM_NAME=env-stream\n")
         env_file = f.name
 
@@ -91,6 +96,41 @@ def test_config_from_env_file():
         assert config.zulip_email == "env@example.com"
         assert config.zulip_api_key == "env_key"
         assert config.zulip_site == "https://env.zulipchat.com"
+        assert config.zulip_token == "env_token"
         assert config.stream_name == "env-stream"
+    finally:
+        os.unlink(env_file)
+
+
+def test_config_token_required():
+    """Test that zulip_token is a required field."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        try:
+            # This should raise a validation error since zulip_token is required
+            Config(
+                zulip_email="test@example.com",
+                zulip_api_key="test_key",
+                zulip_site="https://test.zulipchat.com",
+                database_path=Path(tmpdir) / "test.db",
+            )
+            # If we get here, the test should fail
+            assert False, "Expected validation error for missing zulip_token"
+        except Exception as e:
+            # Should get a validation error for missing required field
+            assert "zulip_token" in str(e).lower() or "field required" in str(e).lower()
+
+
+def test_config_token_from_env():
+    """Test that zulip_token can be loaded from environment variable."""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".env", delete=False) as f:
+        f.write("ZULIP_EMAIL=env@example.com\n")
+        f.write("ZULIP_API_KEY=env_key\n")
+        f.write("ZULIP_SITE=https://env.zulipchat.com\n")
+        f.write("ZULIP_TOKEN=secret_webhook_token\n")
+        env_file = f.name
+
+    try:
+        config = Config(_env_file=env_file)
+        assert config.zulip_token == "secret_webhook_token"
     finally:
         os.unlink(env_file)
