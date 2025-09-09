@@ -55,7 +55,9 @@ class BatchService:
             self.database.add_issues_to_batch(batch_id, parse_result.issues)
             from .config import Config
 
-            self.database.add_batch_voters(batch_id, Config._default_voters)
+            # Validate default voters before adding to database
+            clean_voters = VoterValidationService.validate_voter_names(Config._default_voters)
+            self.database.add_batch_voters(batch_id, clean_voters)
 
             logger.info(
                 "Batch created successfully",
@@ -265,9 +267,10 @@ class VotingService:
 
         batch_voters = self.database.get_batch_voters(batch.id)
         if voter not in batch_voters:
-            was_added = self.database.add_voter_to_batch(batch.id, voter)
+            clean_voter = VoterValidationService.validate_voter_name(voter)
+            was_added = self.database.add_voter_to_batch(batch.id, clean_voter)
             if was_added:
-                logger.info("Added new voter to batch", batch_id=batch.id, voter=voter)
+                logger.info("Added new voter to batch", batch_id=batch.id, voter=clean_voter)
 
         estimates, validation_errors = self.parser.parse_estimation_input(content)
 
@@ -660,3 +663,61 @@ class ResultsService:
                     return f"{cluster_str} cluster"
         else:
             return "mixed clusters"
+
+
+class VoterValidationService:
+    """Service for validating voter names and input."""
+
+    @staticmethod
+    def validate_voter_name(voter: str) -> str:
+        """Validate and clean a voter name.
+
+        Args:
+            voter: Raw voter name input
+
+        Returns:
+            Clean voter name
+
+        Raises:
+            ValidationError: If voter name is invalid
+        """
+        if not voter or not voter.strip():
+            raise ValidationError("Voter name cannot be empty")
+
+        clean_voter = voter.strip()
+
+        if "#" in clean_voter or ":" in clean_voter or "`" in clean_voter:
+            raise ValidationError(
+                f"Invalid voter name '{voter}' - contains characters that suggest vote data corruption"
+            )
+
+        return clean_voter
+
+    @staticmethod
+    def validate_voter_names(voters: list[str]) -> list[str]:
+        """Validate and clean a list of voter names.
+
+        Args:
+            voters: List of raw voter name inputs
+
+        Returns:
+            List of clean voter names (empty names filtered out)
+
+        Raises:
+            ValidationError: If any voter name is invalid
+        """
+        clean_voters = []
+
+        for voter in voters:
+            if not voter or not voter.strip():
+                continue
+
+            try:
+                clean_voter = VoterValidationService.validate_voter_name(voter)
+                if clean_voter not in clean_voters:
+                    clean_voters.append(clean_voter)
+            except ValidationError as e:
+                logger.warning("Skipping invalid voter name", voter=voter, error=str(e))
+                continue
+
+        return clean_voters

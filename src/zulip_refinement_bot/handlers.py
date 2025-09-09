@@ -14,7 +14,7 @@ from .config import Config
 from .exceptions import AuthorizationError, BatchError, ValidationError, VotingError
 from .interfaces import GitHubAPIInterface, MessageHandlerInterface, ZulipClientInterface
 from .models import BatchData, FinalEstimate, IssueData
-from .services import BatchService, ResultsService, VotingService
+from .services import BatchService, ResultsService, VoterValidationService, VotingService
 
 logger = structlog.get_logger(__name__)
 
@@ -275,6 +275,18 @@ class MessageHandler(MessageHandlerInterface):
 
         return voter_names
 
+    def _format_voter_mentions(self, batch_id: int) -> str:
+        """Format voter mentions for display.
+
+        Args:
+            batch_id: ID of the batch
+
+        Returns:
+            Comma-separated string of voter mentions
+        """
+        batch_voters = self.batch_service.database.get_batch_voters(batch_id)
+        return ", ".join([f"@**{voter}**" for voter in batch_voters])
+
     def handle_list_voters(self, message: dict[str, Any]) -> None:
         """Handle list voters command."""
         try:
@@ -327,18 +339,26 @@ class MessageHandler(MessageHandlerInterface):
                 self._send_reply(message, "❌ No active batch found.")
                 return
 
-            # Process each voter
+            # Process each voter with validation
             added_voters = []
             already_present = []
+            invalid_voters = []
 
             for voter_name in voter_names:
-                was_added = self.batch_service.database.add_voter_to_batch(
-                    active_batch.id, voter_name
-                )
-                if was_added:
-                    added_voters.append(voter_name)
-                else:
-                    already_present.append(voter_name)
+                try:
+                    clean_voter = VoterValidationService.validate_voter_name(voter_name)
+                    was_added = self.batch_service.database.add_voter_to_batch(
+                        active_batch.id, clean_voter
+                    )
+                    if was_added:
+                        added_voters.append(clean_voter)
+                    else:
+                        already_present.append(clean_voter)
+                except ValidationError as e:
+                    invalid_voters.append((voter_name, str(e)))
+                    logger.warning(
+                        "Invalid voter name in add command", voter=voter_name, error=str(e)
+                    )
 
             # Build response message
             response_parts = []
@@ -363,6 +383,10 @@ class MessageHandler(MessageHandlerInterface):
                 else:
                     voter_list = ", ".join(f"**{name}**" for name in already_present)
                     response_parts.append(f"ℹ️ {voter_list} were already in batch {active_batch.id}")
+
+            if invalid_voters:
+                for voter_name, error in invalid_voters:
+                    response_parts.append(f"❌ **{voter_name}**: {error}")
 
             self._send_reply(message, "\n".join(response_parts))
 
@@ -797,34 +821,18 @@ Posting to #{self.config.stream_name} now..."""
                 logger.warning("Cannot update batch message: no message ID", batch_id=batch_id)
                 return
 
-            # Get vote count
             vote_count, total_voters, _ = self.voting_service.check_completion_status(batch_id)
 
-            # Reconstruct the batch message with updated vote count
             deadline = datetime.fromisoformat(active_batch.deadline)
-
             issue_list = self._format_issue_list(active_batch.issues)
+            voter_mentions = self._format_voter_mentions(batch_id)
 
-            batch_voters = self.batch_service.database.get_batch_voters(batch_id)
-            voter_mentions = ", ".join([f"@**{voter}**" for voter in batch_voters])
-
-            # Create example format string
-            example_issues = [
-                active_batch.issues[0].issue_number,
-                (
-                    active_batch.issues[1].issue_number
-                    if len(active_batch.issues) > 1
-                    else active_batch.issues[0].issue_number
-                ),
-                (
-                    active_batch.issues[2].issue_number
-                    if len(active_batch.issues) > 2
-                    else active_batch.issues[0].issue_number
-                ),
-            ]
-            example_format = (
-                f"#{example_issues[0]}: 5, #{example_issues[1]}: 8, #{example_issues[2]}: 3"
-            )
+            fibonacci_numbers = [1, 2, 3, 5, 8, 13, 21]
+            example_parts = []
+            for i, issue in enumerate(active_batch.issues):
+                random_fib = fibonacci_numbers[i % len(fibonacci_numbers)]
+                example_parts.append(f"#{issue.issue_number}: {random_fib}")
+            example_format = ", ".join(example_parts)
 
             deadline_str = self.business_hours_calc.format_business_deadline(deadline)
             hours_text = (
@@ -944,7 +952,6 @@ Posting to #{self.config.stream_name} now..."""
             return
 
         try:
-            # Get all votes for this batch
             votes = self.voting_service.get_batch_votes(batch.id)
             vote_count, total_voters, _ = self.voting_service.check_completion_status(batch.id)
 
@@ -1032,12 +1039,7 @@ Posting to #{self.config.stream_name} now..."""
             if batch.id is None:
                 logger.error("Cannot get batch voters: batch ID is None")
                 return
-            voter_mentions = ", ".join(
-                [
-                    f"@**{voter}**"
-                    for voter in self.batch_service.database.get_batch_voters(batch.id)
-                ]
-            )
+            voter_mentions = self._format_voter_mentions(batch.id)
 
             # Determine completion reason
             completion_reason = "All votes received" if auto_completed else "Deadline reached"
@@ -1129,12 +1131,7 @@ Posting to #{self.config.stream_name} now..."""
             if batch.id is None:
                 logger.error("Cannot get batch voters: batch ID is None")
                 return
-            voter_mentions = ", ".join(
-                [
-                    f"@**{voter}**"
-                    for voter in self.batch_service.database.get_batch_voters(batch.id)
-                ]
-            )
+            voter_mentions = self._format_voter_mentions(batch.id)
 
             # Create example format string
             example_issues = [
