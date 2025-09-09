@@ -436,3 +436,43 @@ def test_no_update_when_voter_already_exists():
         mock_send_reply.assert_called_once_with(
             message, "ℹ️ **existing_user** was already in batch 1"
         )
+
+
+def test_format_voter_mentions_excludes_voters_who_voted(db_manager: DatabaseManager):
+    """Test that _format_voter_mentions excludes voters who have already voted."""
+    from unittest.mock import MagicMock
+
+    from zulip_refinement_bot.handlers import MessageHandler
+
+    # Create a batch with voters
+    batch_id = db_manager.create_batch("2024-01-01", "2024-01-01T18:00:00", "facilitator")
+    voters = ["Alice", "Bob", "Charlie"]
+    db_manager.add_batch_voters(batch_id, voters)
+
+    # Alice votes
+    db_manager.upsert_vote(batch_id, "Alice", "1234", 5)
+
+    mock_config = MagicMock()
+    mock_zulip_client = MagicMock()
+    mock_batch_service = MagicMock()
+    mock_batch_service.database = db_manager
+    mock_voting_service = MagicMock()
+    mock_results_service = MagicMock()
+    mock_github_api = MagicMock()
+
+    handler = MessageHandler(
+        mock_config,
+        mock_zulip_client,
+        mock_batch_service,
+        mock_voting_service,
+        mock_results_service,
+        mock_github_api,
+    )
+
+    voter_mentions = handler._format_voter_mentions(batch_id)
+
+    # Alice should be excluded, Bob and Charlie should be included
+    assert "@**Alice**" not in voter_mentions
+    assert "@**Bob**" in voter_mentions
+    assert "@**Charlie**" in voter_mentions
+    assert voter_mentions == "@**Bob**, @**Charlie**"

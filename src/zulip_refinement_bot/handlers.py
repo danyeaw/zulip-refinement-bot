@@ -276,16 +276,21 @@ class MessageHandler(MessageHandlerInterface):
         return voter_names
 
     def _format_voter_mentions(self, batch_id: int) -> str:
-        """Format voter mentions for display.
+        """Format voter mentions for display, excluding voters who have already voted.
 
         Args:
             batch_id: ID of the batch
 
         Returns:
-            Comma-separated string of voter mentions
+            Comma-separated string of voter mentions for voters who haven't voted yet
         """
         batch_voters = self.batch_service.database.get_batch_voters(batch_id)
-        return ", ".join([f"@**{voter}**" for voter in batch_voters])
+        remaining_voters = [
+            voter
+            for voter in batch_voters
+            if not self.batch_service.database.has_voter_voted(batch_id, voter)
+        ]
+        return ", ".join([f"@**{voter}**" for voter in remaining_voters])
 
     def handle_list_voters(self, message: dict[str, Any]) -> None:
         """Handle list voters command."""

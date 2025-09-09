@@ -48,6 +48,9 @@ class DatabaseInterface(ABC):
     def get_vote_count_by_voter(self, batch_id: int) -> int: ...
 
     @abstractmethod
+    def has_voter_voted(self, batch_id: int, voter: str) -> bool: ...
+
+    @abstractmethod
     def update_batch_message_id(self, batch_id: int, message_id: int) -> None: ...
 
     @abstractmethod
