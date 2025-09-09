@@ -107,8 +107,8 @@ def test_voting_service_submit_votes_auto_adds_new_voter(test_config: Config) ->
     # Setup mocks
     mock_database.get_batch_voters.return_value = ["voter1", "voter2"]  # Original voters
     mock_database.add_voter_to_batch.return_value = True  # Successfully added
-    mock_database.get_vote_count_by_voter.return_value = 1
-    mock_parser.parse_estimation_input.return_value = ({"1234": 5}, [])
+    mock_database.get_completed_voters_count.return_value = 1
+    mock_parser.parse_estimation_input.return_value = ({"1234": 5}, [], [])
     mock_database.upsert_vote.return_value = (True, False)
 
     # Create service
@@ -124,11 +124,14 @@ def test_voting_service_submit_votes_auto_adds_new_voter(test_config: Config) ->
     )
 
     # Test vote submission succeeds and adds new voter
-    estimates, has_updates, all_complete = service.submit_votes("#1234: 5", "new_voter", batch)
+    estimates, abstentions, has_updates, all_complete = service.submit_votes(
+        "#1234: 5", "new_voter", batch
+    )
 
     # Verify voter was added
     mock_database.add_voter_to_batch.assert_called_once_with(1, "new_voter")
     assert estimates == {"1234": 5}
+    assert abstentions == []
     assert has_updates is True
 
 
@@ -144,9 +147,9 @@ def test_voting_service_submit_votes_success(test_config: Config) -> None:
         "voter2",
         "voter3",
     ]  # voter1 is authorized
-    mock_parser.parse_estimation_input.return_value = ({"1234": 5}, [])
+    mock_parser.parse_estimation_input.return_value = ({"1234": 5}, [], [])
     mock_database.upsert_vote.return_value = (True, False)
-    mock_database.get_vote_count_by_voter.return_value = 1
+    mock_database.get_completed_voters_count.return_value = 1
 
     # Create service
     service = VotingService(test_config, mock_database, mock_parser)
@@ -161,10 +164,13 @@ def test_voting_service_submit_votes_success(test_config: Config) -> None:
     )
 
     # Test vote submission
-    estimates, has_updates, all_complete = service.submit_votes("#1234: 5", "voter1", batch)
+    estimates, abstentions, has_updates, all_complete = service.submit_votes(
+        "#1234: 5", "voter1", batch
+    )
 
     # Assertions
     assert estimates == {"1234": 5}
+    assert abstentions == []
     assert has_updates  # Should be True since votes were stored
     assert not all_complete  # Only 1 out of 3 voters
     mock_database.upsert_vote.assert_called_once_with(1, "voter1", "1234", 5)
@@ -179,6 +185,7 @@ def test_voting_service_submit_votes_validation_error(test_config: Config) -> No
     # Setup mocks - return validation errors
     mock_parser.parse_estimation_input.return_value = (
         {},
+        [],
         ["#1234: 4 (must be one of: 1, 2, 3, 5, 8, 13, 21)"],
     )
 
@@ -191,5 +198,5 @@ def test_voting_service_submit_votes_validation_error(test_config: Config) -> No
     )
 
     # Test vote submission fails with validation error
-    with pytest.raises(ValidationError, match="Invalid story point values"):
+    with pytest.raises(ValidationError, match="Invalid values found"):
         service.submit_votes("#1234: 4", "voter1", batch)

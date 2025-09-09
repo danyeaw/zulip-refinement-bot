@@ -72,10 +72,16 @@ Submit estimates for all issues in the format:
 #15169: 5, #15168: 8, #15167: 3
 ```
 
+**Abstention format:**
+You can abstain from voting on specific issues:
+```
+#15169: 5, #15168: abstain, #15167: 3
+```
+
 **Proxy voting (facilitator only):**
 Submit votes on behalf of another user:
 ```
-vote for @**username** #15169: 5, #15168: 8, #15167: 3
+vote for @**username** #15169: 5, #15168: 8, #15167: abstain
 vote for John Doe #15169: 5, #15168: 8, #15167: 3
 ```
 
@@ -100,7 +106,7 @@ finish #15169: 5 After discussion we agreed it's medium complexity, #15168: 3 Si
 • Only one active batch at a time
 • {self.config.default_deadline_hours}-hour default deadline
 • Valid story points: 1, 2, 3, 5, 8, 13, 21
-• Must vote for all issues in the batch
+• Must vote or abstain for all issues in the batch
 • Can update votes by submitting new estimates (replaces previous votes)
 • New voters automatically added when they submit votes
 • Batch completes automatically when all voters submit or when deadline expires"""

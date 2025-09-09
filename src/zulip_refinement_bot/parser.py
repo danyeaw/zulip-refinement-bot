@@ -96,18 +96,19 @@ class InputParser(ParserInterface):
         logger.info("Successfully parsed batch input", issue_count=len(issues))
         return ParseResult(success=True, issues=issues, error="")
 
-    def parse_estimation_input(self, content: str) -> tuple[dict[str, int], list[str]]:
+    def parse_estimation_input(self, content: str) -> tuple[dict[str, int], list[str], list[str]]:
         """Parse story point estimation input.
 
-        Expected format: "#1234: 5, #1235: 8, #1236: 3"
+        Expected format: "#1234: 5, #1235: 8, #1236: abstain"
 
         Args:
             content: Raw estimation input
 
         Returns:
-            Tuple of (valid estimates dict, list of validation errors)
+            Tuple of (valid estimates dict, abstentions list, validation errors list)
         """
         estimates = {}
+        abstentions = []
         validation_errors = []
         valid_fibonacci = [1, 2, 3, 5, 8, 13, 21]
 
@@ -119,28 +120,45 @@ class InputParser(ParserInterface):
         ):
             processed_content = processed_content[1:-1].strip()
 
-        pattern = re.compile(r"#(\d+):\s*(\d+)")
+        pattern = re.compile(r"#(\d+):\s*((?:\d+)|(?:abstain))", re.IGNORECASE)
 
         for match in pattern.finditer(processed_content):
             issue_number = match.group(1)
-            points = int(match.group(2))
+            value = match.group(2).lower()
 
-            if points not in valid_fibonacci:
-                validation_errors.append(
-                    f"#{issue_number}: {points} "
-                    f"(must be one of: {', '.join(map(str, valid_fibonacci))})"
-                )
-                logger.warning(
-                    "Invalid story points value - must use Fibonacci sequence",
+            if value == "abstain":
+                abstentions.append(issue_number)
+                logger.info(
+                    "Parsed abstention",
                     issue_number=issue_number,
-                    points=points,
-                    valid_fibonacci=valid_fibonacci,
                 )
-                continue
+            else:
+                try:
+                    points = int(value)
+                    if points not in valid_fibonacci:
+                        validation_errors.append(
+                            f"#{issue_number}: {points} "
+                            f"(must be one of: {', '.join(map(str, valid_fibonacci))})"
+                        )
+                        logger.warning(
+                            "Invalid story points value - must use Fibonacci sequence",
+                            issue_number=issue_number,
+                            points=points,
+                            valid_fibonacci=valid_fibonacci,
+                        )
+                        continue
 
-            estimates[issue_number] = points
+                    estimates[issue_number] = points
+                except ValueError:
+                    validation_errors.append(
+                        f"#{issue_number}: {value} (invalid format - use number or 'abstain')"
+                    )
+                    continue
 
         logger.info(
-            "Parsed estimation input", estimates=estimates, validation_errors=validation_errors
+            "Parsed estimation input",
+            estimates=estimates,
+            abstentions=abstentions,
+            validation_errors=validation_errors,
         )
-        return estimates, validation_errors
+        return estimates, abstentions, validation_errors

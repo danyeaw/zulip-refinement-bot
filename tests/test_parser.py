@@ -149,9 +149,10 @@ def test_input_parser_parse_estimation_input_valid(parser: InputParser):
     """Test valid estimation input parsing."""
     content = "#1234: 5, #1235: 8, #1236: 3"
 
-    estimates, validation_errors = parser.parse_estimation_input(content)
+    estimates, abstentions, validation_errors = parser.parse_estimation_input(content)
 
     assert estimates == {"1234": 5, "1235": 8, "1236": 3}
+    assert abstentions == []
     assert validation_errors == []
 
 
@@ -159,7 +160,7 @@ def test_input_parser_parse_estimation_input_invalid_points(parser: InputParser)
     """Test estimation input with invalid story points."""
     content = "#1234: 4, #1235: 8, #1236: 15"  # 4 and 15 are not valid
 
-    estimates, validation_errors = parser.parse_estimation_input(content)
+    estimates, abstentions, validation_errors = parser.parse_estimation_input(content)
 
     # Should only include valid points (8)
     assert estimates == {"1235": 8}
@@ -173,7 +174,7 @@ def test_input_parser_parse_estimation_input_mixed_format(parser: InputParser):
     """Test estimation input with mixed valid/invalid format."""
     content = "#1234: 5, invalid format, #1235: 8"
 
-    estimates, validation_errors = parser.parse_estimation_input(content)
+    estimates, abstentions, validation_errors = parser.parse_estimation_input(content)
 
     assert estimates == {"1234": 5, "1235": 8}
     assert validation_errors == []  # Invalid format is ignored, not a validation error
@@ -183,7 +184,7 @@ def test_input_parser_parse_estimation_input_empty(parser: InputParser):
     """Test empty estimation input."""
     content = ""
 
-    estimates, validation_errors = parser.parse_estimation_input(content)
+    estimates, abstentions, validation_errors = parser.parse_estimation_input(content)
 
     assert estimates == {}
     assert validation_errors == []
@@ -193,7 +194,7 @@ def test_input_parser_parse_estimation_input_with_backticks(parser: InputParser)
     """Test estimation input with backticks."""
     content = "`#1234: 5, #1235: 8, #1236: 3`"
 
-    estimates, validation_errors = parser.parse_estimation_input(content)
+    estimates, abstentions, validation_errors = parser.parse_estimation_input(content)
 
     assert estimates == {"1234": 5, "1235": 8, "1236": 3}
     assert validation_errors == []
@@ -203,7 +204,7 @@ def test_input_parser_parse_estimation_input_backticks_with_spaces(parser: Input
     """Test estimation input with backticks and extra spaces."""
     content = "  `  #1234: 5, #1235: 8  `  "
 
-    estimates, validation_errors = parser.parse_estimation_input(content)
+    estimates, abstentions, validation_errors = parser.parse_estimation_input(content)
 
     assert estimates == {"1234": 5, "1235": 8}
     assert validation_errors == []
@@ -213,7 +214,7 @@ def test_input_parser_parse_estimation_input_backticks_invalid_points(parser: In
     """Test estimation input with backticks containing invalid points."""
     content = "`#1234: 4, #1235: 8, #1236: 15`"  # 4 and 15 are not valid
 
-    estimates, validation_errors = parser.parse_estimation_input(content)
+    estimates, abstentions, validation_errors = parser.parse_estimation_input(content)
 
     # Should only include valid points (8)
     assert estimates == {"1235": 8}
@@ -227,7 +228,7 @@ def test_input_parser_parse_estimation_input_partial_backticks(parser: InputPars
     """Test estimation input with only one backtick (should be treated as normal content)."""
     content = "`#1234: 5, #1235: 8"  # Only opening backtick
 
-    estimates, validation_errors = parser.parse_estimation_input(content)
+    estimates, abstentions, validation_errors = parser.parse_estimation_input(content)
 
     # Should parse normally since backticks are not properly closed
     assert estimates == {"1234": 5, "1235": 8}
@@ -259,3 +260,36 @@ def test_input_parser_github_url_pattern_matching(parser: InputParser):
     for url in invalid_urls:
         match = parser.GITHUB_URL_PATTERN.match(url)
         assert match is None
+
+
+def test_input_parser_parse_estimation_input_with_abstentions(parser: InputParser):
+    """Test estimation input parsing with abstentions."""
+    content = "#1234: 5, #1235: abstain, #1236: 8"
+
+    estimates, abstentions, validation_errors = parser.parse_estimation_input(content)
+
+    assert estimates == {"1234": 5, "1236": 8}
+    assert abstentions == ["1235"]
+    assert validation_errors == []
+
+
+def test_input_parser_parse_estimation_input_all_abstentions(parser: InputParser):
+    """Test estimation input parsing with only abstentions."""
+    content = "#1234: abstain, #1235: abstain"
+
+    estimates, abstentions, validation_errors = parser.parse_estimation_input(content)
+
+    assert estimates == {}
+    assert abstentions == ["1234", "1235"]
+    assert validation_errors == []
+
+
+def test_input_parser_parse_estimation_input_mixed_case_abstain(parser: InputParser):
+    """Test that abstain keyword is case insensitive."""
+    content = "#1234: ABSTAIN, #1235: Abstain, #1236: abstain"
+
+    estimates, abstentions, validation_errors = parser.parse_estimation_input(content)
+
+    assert estimates == {}
+    assert abstentions == ["1234", "1235", "1236"]
+    assert validation_errors == []

@@ -18,7 +18,7 @@ def voting_service(test_config: Config, db_manager: DatabaseManager) -> VotingSe
     """Create a VotingService for testing."""
     # Create mock parser
     mock_parser = MagicMock()
-    mock_parser.parse_estimation_input.return_value = ({"1234": 5, "1235": 8}, [])
+    mock_parser.parse_estimation_input.return_value = ({"1234": 5, "1235": 8}, [], [])
 
     return VotingService(config=test_config, database=db_manager, parser=mock_parser)
 
@@ -51,11 +51,12 @@ def test_voting_service_submit_votes_existing_voter(
 ):
     """Test submitting votes from an existing batch voter."""
     # Submit votes from existing voter
-    estimates, has_updates, all_complete = voting_service.submit_votes(
+    estimates, abstentions, has_updates, all_complete = voting_service.submit_votes(
         "1234: 5, 1235: 8", "Alice", active_batch_with_voters
     )
 
     assert estimates == {"1234": 5, "1235": 8}
+    assert abstentions == []
     assert has_updates is True
     assert all_complete is False  # Only 1 of 3 voters has voted
 
@@ -73,13 +74,14 @@ def test_voting_service_submit_votes_new_voter_auto_add(
     assert len(initial_voters) == 3
 
     # Submit votes from new voter
-    estimates, has_updates, all_complete = voting_service.submit_votes(
+    estimates, abstentions, has_updates, all_complete = voting_service.submit_votes(
         "1234: 5, 1235: 8",
         "David",  # New voter not in original list
         active_batch_with_voters,
     )
 
     assert estimates == {"1234": 5, "1235": 8}
+    assert abstentions == []
     assert has_updates is True
     assert all_complete is False  # Only 1 of 4 voters has voted
 
@@ -104,17 +106,20 @@ def test_voting_service_check_completion_status_batch_voters(
     assert total_voters == 3  # Alice, Bob, Charlie
     assert is_complete is False
 
-    # Add votes from 2 voters
+    # Add votes from 2 voters (for all issues to be complete)
     db_manager.upsert_vote(batch_id, "Alice", "1234", 5)
+    db_manager.upsert_vote(batch_id, "Alice", "1235", 8)
     db_manager.upsert_vote(batch_id, "Bob", "1234", 8)
+    db_manager.upsert_vote(batch_id, "Bob", "1235", 3)
 
     vote_count, total_voters, is_complete = voting_service.check_completion_status(batch_id)
     assert vote_count == 2
     assert total_voters == 3
     assert is_complete is False
 
-    # Add vote from third voter
+    # Add votes from third voter (for all issues to be complete)
     db_manager.upsert_vote(batch_id, "Charlie", "1234", 3)
+    db_manager.upsert_vote(batch_id, "Charlie", "1235", 5)
 
     vote_count, total_voters, is_complete = voting_service.check_completion_status(batch_id)
     assert vote_count == 3
@@ -131,10 +136,13 @@ def test_check_completion_status_with_dynamic_voter(
     batch_id = active_batch_with_voters.id
     assert batch_id is not None
 
-    # Add votes from original 3 voters
+    # Add votes from original 3 voters (for all issues to be complete)
     db_manager.upsert_vote(batch_id, "Alice", "1234", 5)
+    db_manager.upsert_vote(batch_id, "Alice", "1235", 8)
     db_manager.upsert_vote(batch_id, "Bob", "1234", 8)
+    db_manager.upsert_vote(batch_id, "Bob", "1235", 3)
     db_manager.upsert_vote(batch_id, "Charlie", "1234", 3)
+    db_manager.upsert_vote(batch_id, "Charlie", "1235", 5)
 
     # Should be complete with 3 voters
     vote_count, total_voters, is_complete = voting_service.check_completion_status(batch_id)
@@ -151,8 +159,9 @@ def test_check_completion_status_with_dynamic_voter(
     assert total_voters == 4
     assert is_complete is False
 
-    # Add vote from new voter
+    # Add votes from new voter (for all issues to be complete)
     db_manager.upsert_vote(batch_id, "David", "1234", 2)
+    db_manager.upsert_vote(batch_id, "David", "1235", 13)
 
     # Now should be complete again
     vote_count, total_voters, is_complete = voting_service.check_completion_status(batch_id)
@@ -181,9 +190,9 @@ def test_submit_votes_validation_error(
     """Test submitting votes with validation errors."""
     # Mock parser to return validation errors
     with patch.object(
-        voting_service.parser, "parse_estimation_input", return_value=({}, ["Invalid format"])
+        voting_service.parser, "parse_estimation_input", return_value=({}, [], ["Invalid format"])
     ):
-        with pytest.raises(ValidationError, match="Invalid story point values found"):
+        with pytest.raises(ValidationError, match="Invalid values found"):
             voting_service.submit_votes("invalid format", "Alice", active_batch_with_voters)
 
 
@@ -218,24 +227,26 @@ def test_multiple_vote_submissions_same_voter(
 ):
     """Test multiple vote submissions from the same voter (updates)."""
     # First submission
-    estimates1, has_updates1, _ = voting_service.submit_votes(
+    estimates1, abstentions1, has_updates1, _ = voting_service.submit_votes(
         "1234: 5, 1235: 8", "Alice", active_batch_with_voters
     )
 
     assert estimates1 == {"1234": 5, "1235": 8}
+    assert abstentions1 == []
     assert has_updates1 is True  # New votes
 
     # Second submission (updates)
     with patch.object(
         voting_service.parser,
         "parse_estimation_input",
-        return_value=({"1234": 3, "1235": 13}, []),
+        return_value=({"1234": 3, "1235": 13}, [], []),
     ):
-        estimates2, has_updates2, _ = voting_service.submit_votes(
+        estimates2, abstentions2, has_updates2, _ = voting_service.submit_votes(
             "1234: 3, 1235: 13", "Alice", active_batch_with_voters
         )
 
     assert estimates2 == {"1234": 3, "1235": 13}
+    assert abstentions2 == []
     assert has_updates2 is True  # Updated votes
 
     # Verify final vote values
@@ -258,11 +269,12 @@ def test_race_condition_voter_addition(
     db_manager.add_voter_to_batch(batch_id, "David")
 
     # Now submit vote from same voter (should handle gracefully)
-    estimates, has_updates, _ = voting_service.submit_votes(
+    estimates, abstentions, has_updates, _ = voting_service.submit_votes(
         "1234: 5, 1235: 8", "David", active_batch_with_voters
     )
 
     assert estimates == {"1234": 5, "1235": 8}
+    assert abstentions == []
     assert has_updates is True
 
     # Verify voter appears only once

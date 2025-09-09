@@ -191,13 +191,21 @@ class MessageHandler(MessageHandlerInterface):
                 self._send_reply(message, "❌ No active batch found. Cannot submit votes.")
                 return
 
-            # Submit votes
-            estimates, has_updates, all_voters_complete = self.voting_service.submit_votes(
-                content, voter, active_batch
+            estimates, abstentions, has_updates, all_voters_complete = (
+                self.voting_service.submit_votes(content, voter, active_batch)
             )
 
             # Send success message
-            vote_summary = ", ".join([f"#{issue}: {points}" for issue, points in estimates.items()])
+            parts = []
+            if estimates:
+                vote_summary = ", ".join(
+                    [f"#{issue}: {points}" for issue, points in estimates.items()]
+                )
+                parts.append(f"Estimates: {vote_summary}")
+
+            if abstentions:
+                abstention_summary = ", ".join([f"#{issue}: abstain" for issue in abstentions])
+                parts.append(f"Abstentions: {abstention_summary}")
 
             if has_updates:
                 action_msg = "**Votes updated successfully!**"
@@ -623,11 +631,20 @@ class MessageHandler(MessageHandlerInterface):
                 )
                 return
 
-            estimates, has_updates, all_voters_complete = self.voting_service.submit_votes(
-                vote_content, target_voter, active_batch
+            estimates, abstentions, has_updates, all_voters_complete = (
+                self.voting_service.submit_votes(vote_content, target_voter, active_batch)
             )
 
-            vote_summary = ", ".join([f"#{issue}: {points}" for issue, points in estimates.items()])
+            parts = []
+            if estimates:
+                vote_summary = ", ".join(
+                    [f"#{issue}: {points}" for issue, points in estimates.items()]
+                )
+                parts.append(f"Estimates: {vote_summary}")
+
+            if abstentions:
+                abstention_summary = ", ".join([f"#{issue}: abstain" for issue in abstentions])
+                parts.append(f"Abstentions: {abstention_summary}")
 
             if has_updates:
                 action_msg = f"**Proxy votes updated successfully for {target_voter}!**"

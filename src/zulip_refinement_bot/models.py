@@ -60,6 +60,16 @@ class EstimationVote(BaseModel):
     )
 
 
+class Abstention(BaseModel):
+    """Represents an abstention from voting on an issue."""
+
+    voter: str = Field(..., description="Voter name")
+    issue_number: str = Field(..., description="Issue number")
+    timestamp: datetime = Field(
+        default_factory=lambda: datetime.now(UTC), description="Abstention timestamp"
+    )
+
+
 class FinalEstimate(BaseModel):
     """Represents a final estimate for an issue after discussion."""
 

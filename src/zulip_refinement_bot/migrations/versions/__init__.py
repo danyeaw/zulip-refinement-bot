@@ -5,6 +5,7 @@ from .m002_add_message_id import AddMessageIdMigration
 from .m003_batch_voters import BatchVotersMigration
 from .m004_final_estimates import FinalEstimatesMigration
 from .m005_remove_title_column import RemoveTitleColumnMigration
+from .m006_add_abstentions import AddAbstentionsMigration
 
 # All migrations in order
 ALL_MIGRATIONS = [
@@ -13,6 +14,7 @@ ALL_MIGRATIONS = [
     BatchVotersMigration,
     FinalEstimatesMigration,
     RemoveTitleColumnMigration,
+    AddAbstentionsMigration,
 ]
 
 __all__ = [
@@ -21,5 +23,6 @@ __all__ = [
     "BatchVotersMigration",
     "FinalEstimatesMigration",
     "RemoveTitleColumnMigration",
+    "AddAbstentionsMigration",
     "ALL_MIGRATIONS",
 ]

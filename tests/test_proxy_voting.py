@@ -145,6 +145,7 @@ def test_handle_proxy_vote_success(mock_handler: MessageHandler, active_batch: B
     mock_handler.batch_service.get_active_batch.return_value = active_batch
     mock_handler.voting_service.submit_votes.return_value = (
         {"123": 5, "124": 8},  # estimates
+        [],  # abstentions
         False,  # has_updates
         False,  # all_voters_complete
     )
@@ -306,6 +307,7 @@ def test_handle_proxy_vote_with_message_edit_timeout(
     mock_handler.batch_service.get_active_batch.return_value = active_batch
     mock_handler.voting_service.submit_votes.return_value = (
         {"123": 5, "124": 8},  # estimates
+        [],  # abstentions
         False,  # has_updates
         False,  # all_voters_complete
     )

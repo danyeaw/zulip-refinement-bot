@@ -389,6 +389,40 @@ class DatabaseManager(DatabaseInterface):
             result = cursor.fetchone()
             return result[0] if result else 0
 
+    def get_completed_voters_count(self, batch_id: int) -> int:
+        """Get the number of voters who have completed all voting.
+
+        Args:
+            batch_id: ID of the batch
+
+        Returns:
+            Number of voters who have completed voting
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            # Get total number of issues in the batch
+            cursor = conn.execute("SELECT COUNT(*) FROM issues WHERE batch_id = ?", (batch_id,))
+            total_issues = cursor.fetchone()[0]
+
+            if total_issues == 0:
+                return 0
+
+            cursor = conn.execute(
+                """
+                SELECT voter FROM (
+                    SELECT voter, COUNT(DISTINCT issue_number) as actions_count
+                    FROM (
+                        SELECT voter, issue_number FROM votes WHERE batch_id = ?
+                        UNION
+                        SELECT voter, issue_number FROM abstentions WHERE batch_id = ?
+                    ) combined
+                    GROUP BY voter
+                ) voter_counts
+                WHERE actions_count = ?
+                """,
+                (batch_id, batch_id, total_issues),
+            )
+            return len(cursor.fetchall())
+
     def has_voter_voted(self, batch_id: int, voter: str) -> bool:
         """Check if a voter has already submitted votes for a batch.
 
@@ -522,3 +556,145 @@ class DatabaseManager(DatabaseInterface):
             else:
                 logger.debug("Voter not found in batch", batch_id=batch_id, voter=voter)
                 return False
+
+    def upsert_abstention(self, batch_id: int, voter: str, issue_number: str) -> tuple[bool, bool]:
+        """Store or update an abstention for an issue in a batch.
+
+        Args:
+            batch_id: ID of the batch
+            voter: Name of the voter
+            issue_number: Issue number being abstained from
+
+        Returns:
+            Tuple of (success: bool, was_update: bool)
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            # Check if abstention already exists
+            cursor = conn.execute(
+                "SELECT id FROM abstentions WHERE batch_id = ? AND issue_number = ? AND voter = ?",
+                (batch_id, issue_number, voter),
+            )
+            existing_abstention = cursor.fetchone()
+
+            if existing_abstention:
+                # Update existing abstention timestamp
+                conn.execute(
+                    """UPDATE abstentions SET created_at = CURRENT_TIMESTAMP
+                       WHERE batch_id = ? AND issue_number = ? AND voter = ?""",
+                    (batch_id, issue_number, voter),
+                )
+                conn.commit()
+                logger.info(
+                    "Abstention updated",
+                    batch_id=batch_id,
+                    voter=voter,
+                    issue_number=issue_number,
+                )
+                return True, True
+            else:
+                # Insert new abstention
+                conn.execute(
+                    "INSERT INTO abstentions (batch_id, issue_number, voter) VALUES (?, ?, ?)",
+                    (batch_id, issue_number, voter),
+                )
+                conn.commit()
+                logger.info(
+                    "Abstention recorded",
+                    batch_id=batch_id,
+                    voter=voter,
+                    issue_number=issue_number,
+                )
+                return True, False
+
+    def get_voter_abstentions(self, batch_id: int, voter: str) -> list[str]:
+        """Get list of issue numbers a voter has abstained from.
+
+        Args:
+            batch_id: ID of the batch
+            voter: Name of the voter
+
+        Returns:
+            List of issue numbers
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                "SELECT issue_number FROM abstentions WHERE batch_id = ? AND voter = ?",
+                (batch_id, voter),
+            )
+            return [row[0] for row in cursor.fetchall()]
+
+    def has_voter_abstained(self, batch_id: int, voter: str, issue_number: str) -> bool:
+        """Check if a voter has abstained from a specific issue.
+
+        Args:
+            batch_id: ID of the batch
+            voter: Name of the voter
+            issue_number: Issue number to check
+
+        Returns:
+            True if voter has abstained from this issue
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                "SELECT 1 FROM abstentions WHERE batch_id = ? AND voter = ? AND issue_number = ?",
+                (batch_id, voter, issue_number),
+            )
+            return cursor.fetchone() is not None
+
+    def remove_vote_if_exists(self, batch_id: int, voter: str, issue_number: str) -> bool:
+        """Remove a vote if it exists.
+
+        Args:
+            batch_id: ID of the batch
+            voter: Name of the voter
+            issue_number: Issue number
+
+        Returns:
+            True if a vote was removed
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                "DELETE FROM votes WHERE batch_id = ? AND voter = ? AND issue_number = ?",
+                (batch_id, voter, issue_number),
+            )
+            rows_affected = cursor.rowcount
+            conn.commit()
+
+            if rows_affected > 0:
+                logger.info(
+                    "Vote removed",
+                    batch_id=batch_id,
+                    voter=voter,
+                    issue_number=issue_number,
+                )
+                return True
+            return False
+
+    def remove_abstention_if_exists(self, batch_id: int, voter: str, issue_number: str) -> bool:
+        """Remove an abstention if it exists.
+
+        Args:
+            batch_id: ID of the batch
+            voter: Name of the voter
+            issue_number: Issue number
+
+        Returns:
+            True if an abstention was removed
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                "DELETE FROM abstentions WHERE batch_id = ? AND voter = ? AND issue_number = ?",
+                (batch_id, voter, issue_number),
+            )
+            rows_affected = cursor.rowcount
+            conn.commit()
+
+            if rows_affected > 0:
+                logger.info(
+                    "Abstention removed",
+                    batch_id=batch_id,
+                    voter=voter,
+                    issue_number=issue_number,
+                )
+                return True
+            return False

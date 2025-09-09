@@ -246,8 +246,8 @@ class VotingService:
 
     def submit_votes(
         self, content: str, voter: str, batch: BatchData
-    ) -> tuple[dict[str, int], bool, bool]:
-        """Submit votes for a batch.
+    ) -> tuple[dict[str, int], list[str], bool, bool]:
+        """Submit votes and/or abstentions for a batch.
 
         Args:
             content: Vote content
@@ -255,7 +255,7 @@ class VotingService:
             batch: Active batch data
 
         Returns:
-            Tuple of (estimates, has_updates, all_voters_complete)
+            Tuple of (estimates, abstentions, has_updates, all_voters_complete)
 
         Raises:
             AuthorizationError: If voter is not authorized
@@ -272,72 +272,90 @@ class VotingService:
             if was_added:
                 logger.info("Added new voter to batch", batch_id=batch.id, voter=clean_voter)
 
-        estimates, validation_errors = self.parser.parse_estimation_input(content)
+        estimates, abstentions, validation_errors = self.parser.parse_estimation_input(content)
 
         if validation_errors:
-            error_msg = "Invalid story point values found:\n"
+            error_msg = "Invalid values found:\n"
             for error in validation_errors:
                 error_msg += f"  • {error}\n"
-            error_msg += "\nValid story points (Fibonacci sequence): 1, 2, 3, 5, 8, 13, 21"
+            error_msg += "\nValid story points (Fibonacci sequence): 1, 2, 3, 5, 8, 13, 21\nOr use 'abstain' to abstain from voting"
             raise ValidationError(error_msg)
 
-        if not estimates:
+        if not estimates and not abstentions:
             raise ValidationError(
-                "No valid votes found. Please use format: `#1234: 5, #1235: 8, #1236: 3`\n"
-                "Valid story points: 1, 2, 3, 5, 8, 13, 21"
+                "No valid votes or abstentions found. Please use format: `#1234: 5, #1235: 8, #1236: abstain`\n"
+                "Valid story points: 1, 2, 3, 5, 8, 13, 21\nOr use 'abstain' to abstain from voting"
             )
 
-        self._validate_vote_completeness(estimates, batch)
+        self._validate_vote_completeness(estimates, abstentions, batch)
 
-        stored_count, updated_count, new_count = self._store_votes(batch.id, voter, estimates)
+        stored_count, updated_count, new_count = self._store_votes_and_abstentions(
+            batch.id, voter, estimates, abstentions
+        )
 
-        if stored_count != len(estimates):
+        expected_count = len(estimates) + len(abstentions)
+        if stored_count != expected_count:
             raise VotingError(
-                f"Only {stored_count} out of {len(estimates)} votes were processed successfully."
+                f"Only {stored_count} out of {expected_count} votes/abstentions were processed successfully."
             )
 
-        vote_count = self.database.get_vote_count_by_voter(batch.id)
+        completed_voters_count = self.database.get_completed_voters_count(batch.id)
         batch_voters = self.database.get_batch_voters(batch.id)
-        all_voters_complete = vote_count >= len(batch_voters)
+        all_voters_complete = completed_voters_count >= len(batch_voters)
 
         logger.info(
-            "Votes submitted successfully",
+            "Votes and abstentions submitted successfully",
             batch_id=batch.id,
             voter=voter,
             new_votes=new_count,
             updated_votes=updated_count,
+            abstentions_count=len(abstentions),
             all_voters_complete=all_voters_complete,
         )
 
-        return estimates, stored_count > 0, all_voters_complete
+        return estimates, abstentions, stored_count > 0, all_voters_complete
 
-    def _validate_vote_completeness(self, estimates: dict[str, int], batch: BatchData) -> None:
-        """Validate that all batch issues are voted on.
+    def _validate_vote_completeness(
+        self, estimates: dict[str, int], abstentions: list[str], batch: BatchData
+    ) -> None:
+        """Validate that all batch issues are voted on or abstained from.
 
         Args:
             estimates: Vote estimates
+            abstentions: List of issue numbers abstained from
             batch: Batch data
 
         Raises:
             ValidationError: If vote validation fails
         """
         batch_issue_numbers = {issue.issue_number for issue in batch.issues}
-        voted_issue_numbers = set(estimates.keys())
+        vote_issue_numbers = set(estimates.keys())
+        abstention_issue_numbers = set(abstentions)
+        all_addressed_issues = vote_issue_numbers | abstention_issue_numbers
 
-        missing_votes = batch_issue_numbers - voted_issue_numbers
-        extra_votes = voted_issue_numbers - batch_issue_numbers
+        # Check for duplicates between votes and abstentions
+        overlap = vote_issue_numbers & abstention_issue_numbers
+        if overlap:
+            overlap_list = ", ".join([f"#{issue}" for issue in sorted(overlap)])
+            raise ValidationError(
+                f"Cannot both vote and abstain on the same issues: {overlap_list}\n"
+                "Please choose either a vote or abstention for each issue."
+            )
 
-        if missing_votes or extra_votes:
+        missing_issues = batch_issue_numbers - all_addressed_issues
+        extra_issues = all_addressed_issues - batch_issue_numbers
+
+        if missing_issues or extra_issues:
             error_msg = "Vote validation failed:\n"
-            if missing_votes:
-                missing_list = ", ".join(f"#{num}" for num in missing_votes)
-                error_msg += f"Missing votes for issues: {missing_list}\n"
-            if extra_votes:
-                extra_list = ", ".join(f"#{num}" for num in extra_votes)
-                error_msg += f"Votes for issues not in batch: {extra_list}\n"
+            if missing_issues:
+                missing_list = ", ".join(f"#{num}" for num in missing_issues)
+                error_msg += f"Missing votes/abstentions for issues: {missing_list}\n"
+            if extra_issues:
+                extra_list = ", ".join(f"#{num}" for num in extra_issues)
+                error_msg += f"Votes/abstentions for issues not in batch: {extra_list}\n"
 
             required_list = ", ".join(f"#{num}" for num in batch_issue_numbers)
-            error_msg += f"\nPlease vote for exactly these issues: {required_list}"
+            error_msg += f"\nPlease vote or abstain for exactly these issues: {required_list}"
             raise ValidationError(error_msg)
 
     def _store_votes(
@@ -368,6 +386,52 @@ class VotingService:
 
         return stored_count, updated_count, new_count
 
+    def _store_votes_and_abstentions(
+        self, batch_id: int, voter: str, estimates: dict[str, int], abstentions: list[str]
+    ) -> tuple[int, int, int]:
+        """Store votes and abstentions in the database.
+
+        Args:
+            batch_id: Batch ID
+            voter: Voter name
+            estimates: Vote estimates
+            abstentions: List of issue numbers to abstain from
+
+        Returns:
+            Tuple of (stored_count, updated_count, new_count)
+        """
+        stored_count = 0
+        updated_count = 0
+        new_count = 0
+
+        # Store votes
+        for issue_number, points in estimates.items():
+            # Remove any existing abstention for this issue
+            self.database.remove_abstention_if_exists(batch_id, voter, issue_number)
+
+            success, was_update = self.database.upsert_vote(batch_id, voter, issue_number, points)
+            if success:
+                stored_count += 1
+                if was_update:
+                    updated_count += 1
+                else:
+                    new_count += 1
+
+        # Store abstentions
+        for issue_number in abstentions:
+            # Remove any existing vote for this issue
+            self.database.remove_vote_if_exists(batch_id, voter, issue_number)
+
+            success, was_update = self.database.upsert_abstention(batch_id, voter, issue_number)
+            if success:
+                stored_count += 1
+                if was_update:
+                    updated_count += 1
+                else:
+                    new_count += 1
+
+        return stored_count, updated_count, new_count
+
     def get_batch_votes(self, batch_id: int) -> list[EstimationVote]:
         """Get all votes for a batch.
 
@@ -386,14 +450,14 @@ class VotingService:
             batch_id: Batch ID
 
         Returns:
-            Tuple of (vote_count, total_voters, is_complete)
+            Tuple of (completed_count, total_voters, is_complete)
         """
-        vote_count = self.database.get_vote_count_by_voter(batch_id)
+        completed_count = self.database.get_completed_voters_count(batch_id)
         batch_voters = self.database.get_batch_voters(batch_id)
         total_voters = len(batch_voters)
-        is_complete = vote_count >= total_voters
+        is_complete = completed_count >= total_voters
 
-        return vote_count, total_voters, is_complete
+        return completed_count, total_voters, is_complete
 
 
 class ResultsService:

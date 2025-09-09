@@ -48,6 +48,9 @@ class DatabaseInterface(ABC):
     def get_vote_count_by_voter(self, batch_id: int) -> int: ...
 
     @abstractmethod
+    def get_completed_voters_count(self, batch_id: int) -> int: ...
+
+    @abstractmethod
     def has_voter_voted(self, batch_id: int, voter: str) -> bool: ...
 
     @abstractmethod
@@ -76,6 +79,23 @@ class DatabaseInterface(ABC):
     @abstractmethod
     def get_final_estimates(self, batch_id: int) -> list[FinalEstimate]: ...
 
+    @abstractmethod
+    def upsert_abstention(
+        self, batch_id: int, voter: str, issue_number: str
+    ) -> tuple[bool, bool]: ...
+
+    @abstractmethod
+    def get_voter_abstentions(self, batch_id: int, voter: str) -> list[str]: ...
+
+    @abstractmethod
+    def has_voter_abstained(self, batch_id: int, voter: str, issue_number: str) -> bool: ...
+
+    @abstractmethod
+    def remove_vote_if_exists(self, batch_id: int, voter: str, issue_number: str) -> bool: ...
+
+    @abstractmethod
+    def remove_abstention_if_exists(self, batch_id: int, voter: str, issue_number: str) -> bool: ...
+
 
 class ParserInterface(ABC):
     """Interface for input parsing operations."""
@@ -84,7 +104,9 @@ class ParserInterface(ABC):
     def parse_batch_input(self, content: str) -> ParseResult: ...
 
     @abstractmethod
-    def parse_estimation_input(self, content: str) -> tuple[dict[str, int], list[str]]: ...
+    def parse_estimation_input(
+        self, content: str
+    ) -> tuple[dict[str, int], list[str], list[str]]: ...
 
 
 class ZulipClientInterface(ABC):
