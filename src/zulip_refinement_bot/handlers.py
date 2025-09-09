@@ -1029,7 +1029,15 @@ Posting to #{self.config.stream_name} now..."""
             deadline = datetime.fromisoformat(batch.deadline)
             issue_list = self._format_issue_list(batch.issues)
 
-            voter_mentions = ", ".join([f"@**{voter}**" for voter in self.config.voter_list])
+            if batch.id is None:
+                logger.error("Cannot get batch voters: batch ID is None")
+                return
+            voter_mentions = ", ".join(
+                [
+                    f"@**{voter}**"
+                    for voter in self.batch_service.database.get_batch_voters(batch.id)
+                ]
+            )
 
             # Determine completion reason
             completion_reason = "All votes received" if auto_completed else "Deadline reached"
@@ -1118,7 +1126,15 @@ Posting to #{self.config.stream_name} now..."""
             deadline = datetime.fromisoformat(batch.deadline)
             issue_list = self._format_issue_list(batch.issues)
 
-            voter_mentions = ", ".join([f"@**{voter}**" for voter in self.config.voter_list])
+            if batch.id is None:
+                logger.error("Cannot get batch voters: batch ID is None")
+                return
+            voter_mentions = ", ".join(
+                [
+                    f"@**{voter}**"
+                    for voter in self.batch_service.database.get_batch_voters(batch.id)
+                ]
+            )
 
             # Create example format string
             example_issues = [
