@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
@@ -175,11 +176,12 @@ class TestWebhookEndpoint:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Test successful webhook processing."""
-        # Set all required environment variables for Config
         monkeypatch.setenv("ZULIP_EMAIL", "test@example.com")
         monkeypatch.setenv("ZULIP_API_KEY", "test_key")
         monkeypatch.setenv("ZULIP_SITE", "https://test.zulipchat.com")
         monkeypatch.setenv("ZULIP_TOKEN", "test_webhook_token")
+
+        client.app.state.config = Config()
 
         mock_bot = MagicMock()
         mock_get_bot.return_value = mock_bot
@@ -190,18 +192,24 @@ class TestWebhookEndpoint:
         assert response.json() == {"status": "success"}
         mock_bot.handle_message.assert_called_once()
 
+    @patch("zulip_refinement_bot.fastapi_app.get_bot_instance")
     def test_webhook_endpoint_invalid_token(
         self,
+        mock_get_bot: MagicMock,
         client: TestClient,
         valid_webhook_payload: dict[str, object],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Test webhook with invalid token."""
-        # Set all required environment variables for Config
         monkeypatch.setenv("ZULIP_EMAIL", "test@example.com")
         monkeypatch.setenv("ZULIP_API_KEY", "test_key")
         monkeypatch.setenv("ZULIP_SITE", "https://test.zulipchat.com")
         monkeypatch.setenv("ZULIP_TOKEN", "correct_token")
+
+        client.app.state.config = Config()
+
+        mock_bot = MagicMock()
+        mock_get_bot.return_value = mock_bot
 
         payload = valid_webhook_payload.copy()
         payload["token"] = "wrong_token"
@@ -211,18 +219,24 @@ class TestWebhookEndpoint:
         assert response.status_code == 401
         assert "Invalid webhook token" in response.json()["detail"]
 
+    @patch("zulip_refinement_bot.fastapi_app.get_bot_instance")
     def test_webhook_endpoint_missing_token(
         self,
+        mock_get_bot: MagicMock,
         client: TestClient,
         valid_webhook_payload: dict[str, object],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Test webhook with missing token."""
-        # Set all required environment variables for Config
         monkeypatch.setenv("ZULIP_EMAIL", "test@example.com")
         monkeypatch.setenv("ZULIP_API_KEY", "test_key")
         monkeypatch.setenv("ZULIP_SITE", "https://test.zulipchat.com")
         monkeypatch.setenv("ZULIP_TOKEN", "test_webhook_token")
+
+        client.app.state.config = Config()
+
+        mock_bot = MagicMock()
+        mock_get_bot.return_value = mock_bot
 
         payload = valid_webhook_payload.copy()
         del payload["token"]
@@ -245,7 +259,8 @@ class TestWebhookEndpoint:
         monkeypatch.setenv("ZULIP_SITE", "https://test.zulipchat.com")
         monkeypatch.setenv("ZULIP_TOKEN", "test_webhook_token")
 
-        # Valid token but invalid message structure
+        client.app.state.config = Config()
+
         payload = {"token": "test_webhook_token", "invalid": "payload"}
 
         response = client.post("/webhook", json=payload)
@@ -262,11 +277,12 @@ class TestWebhookEndpoint:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Test webhook when bot processing raises an error."""
-        # Set all required environment variables for Config
         monkeypatch.setenv("ZULIP_EMAIL", "test@example.com")
         monkeypatch.setenv("ZULIP_API_KEY", "test_key")
         monkeypatch.setenv("ZULIP_SITE", "https://test.zulipchat.com")
         monkeypatch.setenv("ZULIP_TOKEN", "test_webhook_token")
+
+        client.app.state.config = Config()
 
         mock_bot = MagicMock()
         mock_bot.handle_message.side_effect = Exception("Bot processing error")
@@ -320,11 +336,12 @@ class TestBotIntegration:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Test that webhook correctly passes message data to bot."""
-        # Set all required environment variables for Config
         monkeypatch.setenv("ZULIP_EMAIL", "test@example.com")
         monkeypatch.setenv("ZULIP_API_KEY", "test_key")
         monkeypatch.setenv("ZULIP_SITE", "https://test.zulipchat.com")
         monkeypatch.setenv("ZULIP_TOKEN", "test_webhook_token")
+
+        client.app.state.config = Config()
 
         mock_bot = MagicMock()
         mock_get_bot.return_value = mock_bot
@@ -333,7 +350,6 @@ class TestBotIntegration:
 
         assert response.status_code == 200
 
-        # Verify bot was called with correct message data
         mock_bot.handle_message.assert_called_once()
         call_args = mock_bot.handle_message.call_args[0][0]
 
@@ -352,16 +368,16 @@ class TestBotIntegration:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Test webhook with complex message content."""
-        # Set all required environment variables for Config
         monkeypatch.setenv("ZULIP_EMAIL", "test@example.com")
         monkeypatch.setenv("ZULIP_API_KEY", "test_key")
         monkeypatch.setenv("ZULIP_SITE", "https://test.zulipchat.com")
         monkeypatch.setenv("ZULIP_TOKEN", "test_webhook_token")
 
+        client.app.state.config = Config()
+
         mock_bot = MagicMock()
         mock_get_bot.return_value = mock_bot
 
-        # Test with voting content
         payload = valid_webhook_payload.copy()
         message = payload["message"]
         assert isinstance(message, dict)
@@ -371,28 +387,34 @@ class TestBotIntegration:
 
         assert response.status_code == 200
 
-        # Verify bot received the voting content
         call_args = mock_bot.handle_message.call_args[0][0]
         assert call_args["content"] == "#123: 5, #124: 8, #125: 3"
 
 
-def test_webhook_proxy_vote_message(client: TestClient) -> None:
+@patch("zulip_refinement_bot.fastapi_app.get_bot_instance")
+def test_webhook_proxy_vote_message(mock_get_bot: MagicMock, client: TestClient) -> None:
     """Test webhook handling of proxy vote message."""
     payload = {
-        "type": "private",
-        "sender_email": "facilitator@example.com",
-        "sender_full_name": "Test Facilitator",
-        "content": "vote for @**bob** #123: 5, #124: 8",
-        "timestamp": 1642678800,
+        "token": "test_webhook_token",
+        "message": {
+            "type": "private",
+            "sender_email": "facilitator@example.com",
+            "sender_full_name": "Test Facilitator",
+            "content": "vote for @**bob** #123: 5, #124: 8",
+            "sender_id": 123,
+        },
     }
 
-    with patch("zulip_refinement_bot.fastapi_app.bot") as mock_bot:
-        mock_bot.handle_message.return_value = {"status": "success", "action": "proxy_vote"}
+    os.environ["ZULIP_TOKEN"] = "test_webhook_token"
+    client.app.state.config = Config()
 
-        response = client.post("/webhook", json=payload)
+    mock_bot = MagicMock()
+    mock_bot.handle_message.return_value = {"status": "success", "action": "proxy_vote"}
+    mock_get_bot.return_value = mock_bot
 
-        assert response.status_code == 200
+    response = client.post("/webhook", json=payload)
 
-        # Verify bot received the proxy vote content
-        call_args = mock_bot.handle_message.call_args[0][0]
-        assert call_args["content"] == "vote for @**bob** #123: 5, #124: 8"
+    assert response.status_code == 200
+
+    call_args = mock_bot.handle_message.call_args[0][0]
+    assert call_args["content"] == "vote for @**bob** #123: 5, #124: 8"
