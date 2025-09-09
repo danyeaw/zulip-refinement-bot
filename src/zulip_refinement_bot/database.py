@@ -698,3 +698,71 @@ class DatabaseManager(DatabaseInterface):
                 )
                 return True
             return False
+
+    def has_reminder_been_sent(self, batch_id: int, reminder_type: str) -> bool:
+        """Check if a specific reminder has already been sent for a batch.
+
+        Args:
+            batch_id: ID of the batch
+            reminder_type: Type of reminder (e.g., 'halfway', '1_hour')
+
+        Returns:
+            True if reminder has been sent, False otherwise
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                "SELECT 1 FROM batch_reminders WHERE batch_id = ? AND reminder_type = ?",
+                (batch_id, reminder_type),
+            )
+            result = cursor.fetchone()
+            return result is not None
+
+    def record_reminder_sent(self, batch_id: int, reminder_type: str) -> None:
+        """Record that a reminder has been sent for a batch.
+
+        Args:
+            batch_id: ID of the batch
+            reminder_type: Type of reminder (e.g., 'halfway', '1_hour')
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute(
+                    "INSERT INTO batch_reminders (batch_id, reminder_type) VALUES (?, ?)",
+                    (batch_id, reminder_type),
+                )
+                conn.commit()
+                logger.info("Reminder recorded", batch_id=batch_id, reminder_type=reminder_type)
+        except sqlite3.IntegrityError:
+            # Reminder already recorded (UNIQUE constraint violation)
+            logger.debug(
+                "Reminder already recorded", batch_id=batch_id, reminder_type=reminder_type
+            )
+
+    def get_voters_without_votes(self, batch_id: int) -> list[str]:
+        """Get list of voters who haven't submitted any votes or abstentions yet.
+
+        Args:
+            batch_id: ID of the batch
+
+        Returns:
+            List of voter names who haven't voted
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                """
+                SELECT bv.voter_name
+                FROM batch_voters bv
+                WHERE bv.batch_id = ?
+                AND bv.voter_name NOT IN (
+                    SELECT DISTINCT voter FROM votes WHERE batch_id = ?
+                    UNION
+                    SELECT DISTINCT voter FROM abstentions WHERE batch_id = ?
+                )
+                ORDER BY bv.voter_name
+                """,
+                (batch_id, batch_id, batch_id),
+            )
+            voters = [row[0] for row in cursor.fetchall()]
+
+        logger.debug("Retrieved voters without votes", batch_id=batch_id, voters=voters)
+        return voters

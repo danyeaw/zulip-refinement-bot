@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import threading
-import time
 from datetime import UTC, datetime
 from typing import Any
 
@@ -33,13 +31,6 @@ class RefinementBot:
         self.zulip_client = self.container.get_zulip_client()
         self.message_handler = self.container.get_message_handler()
         self.batch_service = self.container.get_batch_service()
-
-        # Start deadline checker thread
-        self._deadline_checker_running = True
-        self._deadline_checker_thread = threading.Thread(
-            target=self._deadline_checker_loop, daemon=True
-        )
-        self._deadline_checker_thread.start()
 
         logger.info("Refinement bot initialized", config=config.dict(exclude={"zulip_api_key"}))
 
@@ -128,6 +119,8 @@ finish #15169: 5 After discussion we agreed it's medium complexity, #15168: 3 Si
                 self._send_reply(message, self.usage())
                 return {"status": "success", "action": "help"}
 
+            self._check_reminders_and_expiration()
+
             action = self._route_message(message, content)
             return {"status": "success", "action": action}
 
@@ -208,19 +201,8 @@ finish #15169: 5 After discussion we agreed it's medium complexity, #15168: 3 Si
         except Exception as e:
             logger.error("Failed to send reply", error=str(e))
 
-    def _deadline_checker_loop(self) -> None:
-        """Background thread that checks for expired batches."""
-        while self._deadline_checker_running:
-            try:
-                self._check_expired_batches()
-            except Exception as e:
-                logger.error("Error in deadline checker", error=str(e))
-
-            # Check every 5 minutes
-            time.sleep(300)
-
-    def _check_expired_batches(self) -> None:
-        """Check for and process any expired batches."""
+    def _check_reminders_and_expiration(self) -> None:
+        """Check for reminders to send and expired batches."""
         active_batch = self.batch_service.get_active_batch()
         if not active_batch or active_batch.id is None:
             return
@@ -242,13 +224,89 @@ finish #15169: 5 After discussion we agreed it's medium complexity, #15168: 3 Si
                 logger.error(
                     "Error processing expired batch", batch_id=active_batch.id, error=str(e)
                 )
+            return
+
+        self._check_and_send_reminders(active_batch, deadline, now)
+
+    def _check_and_send_reminders(
+        self, active_batch: Any, deadline: datetime, now: datetime
+    ) -> None:
+        """Check if reminders need to be sent and send them."""
+        time_until_deadline = deadline - now
+        hours_until_deadline = round(time_until_deadline.total_seconds() / 3600)
+
+        half_deadline_hours = self.config.default_deadline_hours // 2
+
+        if hours_until_deadline == half_deadline_hours:
+            reminder_type = "halfway"
+            if not self.container.get_database().has_reminder_been_sent(
+                active_batch.id, reminder_type
+            ):
+                self._send_reminder(
+                    active_batch, reminder_type, f"{half_deadline_hours} hours remaining"
+                )
+
+        elif hours_until_deadline == 1:
+            reminder_type = "1_hour"
+            if not self.container.get_database().has_reminder_been_sent(
+                active_batch.id, reminder_type
+            ):
+                self._send_reminder(active_batch, reminder_type, "1 hour remaining")
+
+    def _send_reminder(self, active_batch: Any, reminder_type: str, time_remaining: str) -> None:
+        """Send a reminder to voters who haven't submitted estimates yet."""
+        database = self.container.get_database()
+
+        voters_without_votes = database.get_voters_without_votes(active_batch.id)
+
+        if not voters_without_votes:
+            logger.info(
+                "No voters need reminders", batch_id=active_batch.id, reminder_type=reminder_type
+            )
+            return
+
+        voter_mentions = ", ".join([f"@**{voter}**" for voter in voters_without_votes])
+
+        reminder_message = f"""⏰ **Voting Reminder** - {time_remaining} left!
+
+{voter_mentions} - You haven't submitted your estimates yet for the current batch refinement.
+
+Please review the issues and DM me your votes soon. Send me 'status' to see the current batch details."""
+
+        try:
+            response = self.zulip_client.send_message(
+                {
+                    "type": "stream",
+                    "to": self.config.stream_name,
+                    "topic": "Batch Refinement",
+                    "content": reminder_message,
+                }
+            )
+
+            if response.get("result") == "success":
+                logger.info(
+                    "Reminder sent to stream",
+                    stream=self.config.stream_name,
+                    voters_count=len(voters_without_votes),
+                )
+            else:
+                logger.error("Failed to send reminder to stream", response=response)
+
+        except Exception as e:
+            logger.error("Failed to send reminder", error=str(e))
+
+        database.record_reminder_sent(active_batch.id, reminder_type)
+
+        logger.info(
+            "Reminder sent",
+            batch_id=active_batch.id,
+            reminder_type=reminder_type,
+            voters_count=len(voters_without_votes),
+        )
 
     def stop(self) -> None:
         """Stop the bot and cleanup resources."""
         logger.info("Stopping Zulip Refinement Bot")
-        self._deadline_checker_running = False
-        if hasattr(self, "_deadline_checker_thread"):
-            self._deadline_checker_thread.join(timeout=5.0)
 
         # Clean up container resources
         if hasattr(self, "container"):
