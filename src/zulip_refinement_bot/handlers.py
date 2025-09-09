@@ -530,8 +530,24 @@ class MessageHandler(MessageHandlerInterface):
         Returns:
             True if content appears to be in vote format
         """
+        # First check if it's a proxy vote - if so, it's not a regular vote
+        if self.is_proxy_vote_format(content):
+            return False
+
+        # Remove backticks if present and properly paired
+        processed_content = content.strip()
+        if (
+            processed_content.startswith("`")
+            and processed_content.endswith("`")
+            and len(processed_content) > 1
+        ):
+            processed_content = processed_content[1:-1].strip()
+        elif "`" in processed_content:
+            # If backticks are present but not properly paired, reject
+            return False
+
         vote_pattern = re.compile(r"#\d+:\s*\d+")
-        return bool(vote_pattern.search(content))
+        return bool(vote_pattern.search(processed_content))
 
     def is_proxy_vote_format(self, content: str) -> bool:
         """Check if content looks like a proxy vote submission.
@@ -619,7 +635,7 @@ class MessageHandler(MessageHandlerInterface):
         """
         import re
 
-        proxy_pattern = re.compile(r"vote\s+for\s+(.+?)\s+(#\d+:\s*\d+.*)", re.IGNORECASE)
+        proxy_pattern = re.compile(r"vote\s+for\s+(.+?)\s+`?(#\d+:\s*\d+.*?)`?$", re.IGNORECASE)
         match = proxy_pattern.match(content.strip())
 
         if not match:

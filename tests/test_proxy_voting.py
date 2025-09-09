@@ -97,6 +97,19 @@ def test_parse_proxy_vote_content_success_cases(mock_handler: MessageHandler) ->
             "vote for @**jane.doe** #123: 21",
             ("jane.doe", "#123: 21"),
         ),
+        # Backtick cases
+        (
+            "vote for @**john** `#123: 5, #124: 8`",
+            ("john", "#123: 5, #124: 8"),
+        ),
+        (
+            "vote for Alice Smith `#123: 3`",
+            ("Alice Smith", "#123: 3"),
+        ),
+        (
+            "VOTE FOR Bob `#123: 13, #124: 2, #125: 5`",
+            ("Bob", "#123: 13, #124: 2, #125: 5"),
+        ),
     ]
 
     for input_text, expected in test_cases:
@@ -237,3 +250,42 @@ def test_handle_proxy_vote_validation_error(
     # Verify
     call_args = mock_handler.zulip_client.send_message.call_args[0][0]
     assert "Invalid story point value" in call_args["content"]
+
+
+def test_is_vote_format_valid_cases(mock_handler: MessageHandler) -> None:
+    """Test that is_vote_format correctly identifies valid vote formats."""
+    valid_cases = [
+        "#123: 5",
+        "#123: 5, #124: 8",
+        "#123: 5, #124: 8, #125: 3",
+        "  #123: 5  ",  # With spaces
+        "#123:5",  # No space after colon
+        "`#123: 5`",  # With backticks
+        "`#123: 5, #124: 8`",  # Multiple votes with backticks
+        "  `  #123: 5  `  ",  # Backticks with extra spaces
+    ]
+
+    for case in valid_cases:
+        assert mock_handler.is_vote_format(case), f"Should accept: {case}"
+
+
+def test_is_vote_format_invalid_cases(mock_handler: MessageHandler) -> None:
+    """Test that is_vote_format correctly rejects invalid vote formats."""
+    invalid_cases = [
+        "",
+        "start batch",
+        "status",
+        "cancel",
+        "vote for alice #123: 5",  # proxy vote format
+        "#123",  # Missing points
+        "123: 5",  # Missing hash
+        "#abc: 5",  # Non-numeric issue number
+        "#123: abc",  # Non-numeric points
+        "random text",
+        "`",  # Just a backtick
+        "`#123: 5",  # Unclosed backtick
+        "#123: 5`",  # Only closing backtick
+    ]
+
+    for case in invalid_cases:
+        assert not mock_handler.is_vote_format(case), f"Should reject: {case}"

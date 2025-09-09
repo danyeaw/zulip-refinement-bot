@@ -111,14 +111,20 @@ class InputParser(ParserInterface):
         validation_errors = []
         valid_fibonacci = [1, 2, 3, 5, 8, 13, 21]
 
-        # Pattern to match "#1234: 5" format
+        processed_content = content.strip()
+        if (
+            processed_content.startswith("`")
+            and processed_content.endswith("`")
+            and len(processed_content) > 1
+        ):
+            processed_content = processed_content[1:-1].strip()
+
         pattern = re.compile(r"#(\d+):\s*(\d+)")
 
-        for match in pattern.finditer(content):
+        for match in pattern.finditer(processed_content):
             issue_number = match.group(1)
             points = int(match.group(2))
 
-            # Validate story points are in Fibonacci sequence
             if points not in valid_fibonacci:
                 validation_errors.append(
                     f"#{issue_number}: {points} "

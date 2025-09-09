@@ -189,6 +189,51 @@ def test_input_parser_parse_estimation_input_empty(parser: InputParser):
     assert validation_errors == []
 
 
+def test_input_parser_parse_estimation_input_with_backticks(parser: InputParser):
+    """Test estimation input with backticks."""
+    content = "`#1234: 5, #1235: 8, #1236: 3`"
+
+    estimates, validation_errors = parser.parse_estimation_input(content)
+
+    assert estimates == {"1234": 5, "1235": 8, "1236": 3}
+    assert validation_errors == []
+
+
+def test_input_parser_parse_estimation_input_backticks_with_spaces(parser: InputParser):
+    """Test estimation input with backticks and extra spaces."""
+    content = "  `  #1234: 5, #1235: 8  `  "
+
+    estimates, validation_errors = parser.parse_estimation_input(content)
+
+    assert estimates == {"1234": 5, "1235": 8}
+    assert validation_errors == []
+
+
+def test_input_parser_parse_estimation_input_backticks_invalid_points(parser: InputParser):
+    """Test estimation input with backticks containing invalid points."""
+    content = "`#1234: 4, #1235: 8, #1236: 15`"  # 4 and 15 are not valid
+
+    estimates, validation_errors = parser.parse_estimation_input(content)
+
+    # Should only include valid points (8)
+    assert estimates == {"1235": 8}
+    # Should have validation errors for invalid points
+    assert len(validation_errors) == 2
+    assert "#1234: 4" in validation_errors[0]
+    assert "#1236: 15" in validation_errors[1]
+
+
+def test_input_parser_parse_estimation_input_partial_backticks(parser: InputParser):
+    """Test estimation input with only one backtick (should be treated as normal content)."""
+    content = "`#1234: 5, #1235: 8"  # Only opening backtick
+
+    estimates, validation_errors = parser.parse_estimation_input(content)
+
+    # Should parse normally since backticks are not properly closed
+    assert estimates == {"1234": 5, "1235": 8}
+    assert validation_errors == []
+
+
 def test_input_parser_github_url_pattern_matching(parser: InputParser):
     """Test GitHub URL pattern matching."""
     # Valid URLs
