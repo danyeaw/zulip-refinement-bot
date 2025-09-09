@@ -867,14 +867,70 @@ Posting to #{self.config.stream_name} now..."""
                     total_voters=total_voters,
                 )
             else:
-                logger.error(
-                    "Failed to update batch message",
-                    batch_id=batch_id,
-                    response=edit_response,
-                )
+                error_msg = edit_response.get("msg", "").lower()
+                if "time limit" in error_msg or "edit" in error_msg:
+                    self._post_fallback_status_update(active_batch, vote_count, total_voters)
+                else:
+                    logger.error(
+                        "Failed to update batch message",
+                        batch_id=batch_id,
+                        response=edit_response,
+                    )
 
         except Exception as e:
             logger.error("Failed to update batch message", batch_id=batch_id, error=str(e))
+
+    def _post_fallback_status_update(
+        self, active_batch: BatchData, vote_count: int, total_voters: int
+    ) -> None:
+        """Post a fallback status update message when the original batch message can't be edited.
+
+        Args:
+            active_batch: The active batch data
+            vote_count: Current number of voters who have voted
+            total_voters: Total number of voters expected
+        """
+        try:
+            topic_name = f"Refinement: {active_batch.date} ({len(active_batch.issues)} issues)"
+
+            status_content = f"""📊 **Voting Progress Update**
+
+**Status**: ⏳ Collecting estimates ({vote_count}/{total_voters} received)
+
+{vote_count}/{total_voters} team members have submitted their estimates. Still waiting for votes from remaining members.
+
+*This update was posted because the original message could no longer be edited.*"""
+
+            response = self.zulip_client.send_message(
+                {
+                    "type": "stream",
+                    "to": self.config.stream_name,
+                    "topic": topic_name,
+                    "content": status_content,
+                }
+            )
+
+            if response.get("result") == "success":
+                logger.info(
+                    "Posted fallback status update",
+                    batch_id=active_batch.id,
+                    vote_count=vote_count,
+                    total_voters=total_voters,
+                    topic=topic_name,
+                )
+            else:
+                logger.error(
+                    "Failed to post fallback status update",
+                    batch_id=active_batch.id,
+                    response=response,
+                )
+
+        except Exception as e:
+            logger.error(
+                "Failed to post fallback status update",
+                batch_id=active_batch.id,
+                error=str(e),
+            )
 
     def _process_batch_completion(self, batch: BatchData, auto_completed: bool = False) -> None:
         """Process completion of a batch.

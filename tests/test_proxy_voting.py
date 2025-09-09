@@ -289,3 +289,60 @@ def test_is_vote_format_invalid_cases(mock_handler: MessageHandler) -> None:
 
     for case in invalid_cases:
         assert not mock_handler.is_vote_format(case), f"Should reject: {case}"
+
+
+def test_handle_proxy_vote_with_message_edit_timeout(
+    mock_handler: MessageHandler, active_batch: BatchData
+) -> None:
+    """Test proxy vote when original batch message can't be edited due to time limit."""
+    # Setup
+    message = {
+        "sender_full_name": "Alice Smith",  # Same as batch facilitator
+        "sender_email": "alice@example.com",
+    }
+    content = "vote for @**bob** #123: 5, #124: 8"
+
+    # Mock dependencies
+    mock_handler.batch_service.get_active_batch.return_value = active_batch
+    mock_handler.voting_service.submit_votes.return_value = (
+        {"123": 5, "124": 8},  # estimates
+        False,  # has_updates
+        False,  # all_voters_complete
+    )
+    mock_handler.voting_service.check_completion_status.return_value = (1, 3, False)
+
+    # Mock Zulip API calls
+    mock_handler.zulip_client.send_message.return_value = {"result": "success"}
+    # Simulate message edit failure due to time limit
+    mock_handler.zulip_client.update_message.return_value = {
+        "result": "error",
+        "msg": "The time limit for editing this message has passed",
+        "code": "BAD_REQUEST",
+    }
+
+    # Execute
+    mock_handler.handle_proxy_vote(message, content)
+
+    # Verify voting service was called
+    mock_handler.voting_service.submit_votes.assert_called_once_with(
+        "#123: 5, #124: 8", "bob", active_batch
+    )
+
+    # Verify the fallback status message was posted
+    send_message_calls = mock_handler.zulip_client.send_message.call_args_list
+
+    # First call should be the reply to the proxy vote submitter
+    reply_call = send_message_calls[0][0][0]
+    assert "Proxy votes recorded successfully for bob" in reply_call["content"]
+    assert reply_call["type"] == "private"
+
+    # Second call should be the fallback status update to the stream
+    fallback_call = send_message_calls[1][0][0]
+    assert fallback_call["type"] == "stream"
+    assert "Voting Progress Update" in fallback_call["content"]
+    assert "(1/3 received)" in fallback_call["content"]
+    assert "original message could no longer be edited" in fallback_call["content"]
+    assert (
+        fallback_call["topic"]
+        == f"Refinement: {active_batch.date} ({len(active_batch.issues)} issues)"
+    )
