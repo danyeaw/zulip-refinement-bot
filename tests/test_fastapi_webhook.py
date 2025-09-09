@@ -240,6 +240,9 @@ class TestWebhookEndpoint:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Test webhook with invalid payload."""
+        monkeypatch.setenv("ZULIP_EMAIL", "test@example.com")
+        monkeypatch.setenv("ZULIP_API_KEY", "test_key")
+        monkeypatch.setenv("ZULIP_SITE", "https://test.zulipchat.com")
         monkeypatch.setenv("ZULIP_TOKEN", "test_webhook_token")
 
         # Valid token but invalid message structure

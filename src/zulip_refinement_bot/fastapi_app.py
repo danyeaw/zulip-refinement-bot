@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+from typing import Any, cast
 
 import structlog
 from fastapi import FastAPI, HTTPException, Request
@@ -13,18 +15,26 @@ from .config import Config
 
 logger = structlog.get_logger(__name__)
 
-# Global bot instance
-_bot_instance: RefinementBot | None = None
 
-
-def get_bot_instance() -> RefinementBot:
-    """Get or create the bot instance."""
-    global _bot_instance
-    if _bot_instance is None:
+def get_bot_instance(app: FastAPI) -> RefinementBot:
+    """Get or create the bot instance from app state."""
+    if app.state.bot_instance is None:
         config = Config()
-        _bot_instance = RefinementBot(config)
+        app.state.bot_instance = RefinementBot(config)
         logger.info("Bot instance created for FastAPI")
-    return _bot_instance
+    return cast(RefinementBot, app.state.bot_instance)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Handle application lifespan events."""
+    logger.info("FastAPI app starting up")
+    app.state.bot_instance = None
+    yield
+    if app.state.bot_instance:
+        app.state.bot_instance.stop()
+        app.state.bot_instance = None
+    logger.info("FastAPI app shut down")
 
 
 # Create FastAPI app
@@ -32,17 +42,8 @@ app = FastAPI(
     title="Zulip Refinement Bot",
     description="FastAPI webhook handler for Zulip Refinement Bot",
     version="1.0.0",
+    lifespan=lifespan,
 )
-
-
-@app.on_event("shutdown")  # type: ignore[misc]
-async def shutdown_event() -> None:
-    """Clean up on shutdown."""
-    global _bot_instance
-    if _bot_instance:
-        _bot_instance.stop()
-        _bot_instance = None
-    logger.info("FastAPI app shut down")
 
 
 @app.get("/")  # type: ignore[misc]
@@ -74,7 +75,7 @@ async def zulip_webhook(request: Request) -> JSONResponse:
             logger.warning("Invalid webhook payload", payload=payload)
             raise HTTPException(status_code=400, detail="Invalid webhook payload")
 
-        bot = get_bot_instance()
+        bot = get_bot_instance(request.app)
         bot.handle_message(message_data)
 
         return JSONResponse(content={"status": "success"})
