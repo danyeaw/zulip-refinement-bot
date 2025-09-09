@@ -19,8 +19,8 @@ logger = structlog.get_logger(__name__)
 def get_bot_instance(app: FastAPI) -> RefinementBot:
     """Get or create the bot instance from app state."""
     if app.state.bot_instance is None:
-        config = Config()
-        app.state.bot_instance = RefinementBot(config)
+        app.state.config = Config()
+        app.state.bot_instance = RefinementBot(app.state.config)
         logger.info("Bot instance created for FastAPI")
     return cast(RefinementBot, app.state.bot_instance)
 
@@ -65,8 +65,8 @@ async def zulip_webhook(request: Request) -> JSONResponse:
         payload = await request.json()
         logger.debug("Received webhook payload", payload=payload)
 
-        # Verify webhook token FIRST before any other processing
-        if not _verify_webhook_token(payload):
+        bot = get_bot_instance(request.app)
+        if not _verify_webhook_token(payload, request.app.state.config):
             logger.warning("Invalid webhook token", payload=payload)
             raise HTTPException(status_code=401, detail="Invalid webhook token")
 
@@ -75,7 +75,6 @@ async def zulip_webhook(request: Request) -> JSONResponse:
             logger.warning("Invalid webhook payload", payload=payload)
             raise HTTPException(status_code=400, detail="Invalid webhook payload")
 
-        bot = get_bot_instance(request.app)
         bot.handle_message(message_data)
 
         return JSONResponse(content={"status": "success"})
@@ -87,10 +86,9 @@ async def zulip_webhook(request: Request) -> JSONResponse:
         raise HTTPException(status_code=500, detail=f"Error processing webhook: {str(e)}") from e
 
 
-def _verify_webhook_token(payload: dict[str, Any]) -> bool:
+def _verify_webhook_token(payload: dict[str, Any], config: Config) -> bool:
     """Verify the webhook token from Zulip."""
     try:
-        config = Config()
         expected_token = config.zulip_token
 
         received_token = payload.get("token")

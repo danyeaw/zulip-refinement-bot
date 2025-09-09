@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -48,20 +48,19 @@ class TestWebhookTokenVerification:
         self, valid_webhook_payload: dict[str, object], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test token verification with valid token."""
-        # Set all required environment variables for Config
         monkeypatch.setenv("ZULIP_EMAIL", "test@example.com")
         monkeypatch.setenv("ZULIP_API_KEY", "test_key")
         monkeypatch.setenv("ZULIP_SITE", "https://test.zulipchat.com")
         monkeypatch.setenv("ZULIP_TOKEN", "test_webhook_token")
 
-        result = _verify_webhook_token(valid_webhook_payload)
+        config = Config()
+        result = _verify_webhook_token(valid_webhook_payload, config)
         assert result is True
 
     def test_verify_webhook_token_invalid(
         self, valid_webhook_payload: dict[str, object], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test token verification with invalid token."""
-        # Set all required environment variables for Config
         monkeypatch.setenv("ZULIP_EMAIL", "test@example.com")
         monkeypatch.setenv("ZULIP_API_KEY", "test_key")
         monkeypatch.setenv("ZULIP_SITE", "https://test.zulipchat.com")
@@ -70,14 +69,14 @@ class TestWebhookTokenVerification:
         payload = valid_webhook_payload.copy()
         payload["token"] = "wrong_token"
 
-        result = _verify_webhook_token(payload)
+        config = Config()
+        result = _verify_webhook_token(payload, config)
         assert result is False
 
     def test_verify_webhook_token_missing(
         self, valid_webhook_payload: dict[str, object], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test token verification with missing token."""
-        # Set all required environment variables for Config
         monkeypatch.setenv("ZULIP_EMAIL", "test@example.com")
         monkeypatch.setenv("ZULIP_API_KEY", "test_key")
         monkeypatch.setenv("ZULIP_SITE", "https://test.zulipchat.com")
@@ -86,18 +85,19 @@ class TestWebhookTokenVerification:
         payload = valid_webhook_payload.copy()
         del payload["token"]
 
-        result = _verify_webhook_token(payload)
+        config = Config()
+        result = _verify_webhook_token(payload, config)
         assert result is False
 
     def test_verify_webhook_token_config_error(
         self, valid_webhook_payload: dict[str, object]
     ) -> None:
         """Test token verification when config loading fails."""
-        with patch("zulip_refinement_bot.fastapi_app.Config") as mock_config_class:
-            mock_config_class.side_effect = Exception("Config error")
+        mock_config = MagicMock()
+        mock_config.zulip_token = PropertyMock(side_effect=Exception("Config error"))
 
-            result = _verify_webhook_token(valid_webhook_payload)
-            assert result is False
+        result = _verify_webhook_token(valid_webhook_payload, mock_config)
+        assert result is False
 
 
 class TestWebhookPayloadConversion:

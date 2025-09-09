@@ -25,6 +25,10 @@ class Container:
         self.config = config
         self._instances: dict[type, object] = {}
 
+    def cleanup(self) -> None:
+        """Clean up any resources held by the container."""
+        self._instances.clear()
+
     def get_github_api(self) -> GitHubAPIInterface:
         if GitHubAPIInterface not in self._instances:
             self._instances[GitHubAPIInterface] = GitHubAPI(timeout=self.config.github_timeout)

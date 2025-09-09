@@ -233,3 +233,7 @@ finish #15169: 5 After discussion we agreed it's medium complexity, #15168: 3 Si
         self._deadline_checker_running = False
         if hasattr(self, "_deadline_checker_thread"):
             self._deadline_checker_thread.join(timeout=5.0)
+
+        # Clean up container resources
+        if hasattr(self, "container"):
+            self.container.cleanup()
