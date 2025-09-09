@@ -533,6 +533,105 @@ class MessageHandler(MessageHandlerInterface):
         vote_pattern = re.compile(r"#\d+:\s*\d+")
         return bool(vote_pattern.search(content))
 
+    def is_proxy_vote_format(self, content: str) -> bool:
+        """Check if content looks like a proxy vote submission.
+
+        Args:
+            content: Message content to check
+
+        Returns:
+            True if content appears to be in proxy vote format
+        """
+        proxy_vote_pattern = re.compile(r"vote\s+for\s+", re.IGNORECASE)
+        return bool(proxy_vote_pattern.search(content))
+
+    def handle_proxy_vote(self, message: dict[str, Any], content: str) -> None:
+        """Handle proxy vote submission from facilitator.
+
+        Args:
+            message: Zulip message data
+            content: Proxy vote content in format "vote for @**username** #123: 5, #124: 8"
+        """
+        try:
+            facilitator = message["sender_full_name"]
+            active_batch = self.batch_service.get_active_batch()
+
+            if not active_batch:
+                self._send_reply(message, "❌ No active batch found. Cannot submit proxy votes.")
+                return
+
+            if facilitator != active_batch.facilitator:
+                self._send_reply(
+                    message,
+                    f"❌ Only the facilitator ({active_batch.facilitator}) can submit votes on behalf of others.",
+                )
+                return
+
+            target_voter, vote_content = self._parse_proxy_vote_content(content)
+            if not target_voter or not vote_content:
+                self._send_reply(
+                    message,
+                    "❌ Invalid proxy vote format. Please use:\n"
+                    "`vote for @**username** #123: 5, #124: 8`\n"
+                    "or\n"
+                    "`vote for John Doe #123: 5, #124: 8`",
+                )
+                return
+
+            estimates, has_updates, all_voters_complete = self.voting_service.submit_votes(
+                vote_content, target_voter, active_batch
+            )
+
+            vote_summary = ", ".join([f"#{issue}: {points}" for issue, points in estimates.items()])
+
+            if has_updates:
+                action_msg = f"**Proxy votes updated successfully for {target_voter}!**"
+            else:
+                action_msg = f"**Proxy votes recorded successfully for {target_voter}!**"
+
+            self._send_reply(
+                message,
+                f"✅ {action_msg}\n\n"
+                f"Votes submitted on behalf of **{target_voter}**: {vote_summary}\n\n"
+                f"Proxy vote submitted by facilitator.",
+            )
+
+            if active_batch.id:
+                self._update_batch_message(active_batch.id, active_batch)
+
+                if all_voters_complete:
+                    self._process_batch_completion(active_batch, auto_completed=True)
+
+        except (AuthorizationError, ValidationError, VotingError) as e:
+            self._send_reply(message, f"❌ {e.message}")
+        except Exception as e:
+            logger.error("Error handling proxy vote submission", error=str(e))
+            self._send_reply(message, "❌ Error processing proxy votes. Please try again.")
+
+    def _parse_proxy_vote_content(self, content: str) -> tuple[str | None, str | None]:
+        """Parse proxy vote content to extract target voter and vote data.
+
+        Args:
+            content: Content like "vote for @**username** #123: 5, #124: 8"
+
+        Returns:
+            Tuple of (target_voter, vote_content) or (None, None) if invalid
+        """
+        import re
+
+        proxy_pattern = re.compile(r"vote\s+for\s+(.+?)\s+(#\d+:\s*\d+.*)", re.IGNORECASE)
+        match = proxy_pattern.match(content.strip())
+
+        if not match:
+            return None, None
+
+        target_voter_raw = match.group(1).strip()
+        vote_content = match.group(2).strip()
+
+        target_voter = self._parse_voter_name(target_voter_raw)
+
+        return target_voter, vote_content
+
     def _send_reply(self, message: dict[str, Any], content: str) -> None:
         """Send a reply to a message.
 

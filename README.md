@@ -51,6 +51,13 @@ DM your estimates using Fibonacci points (1, 2, 3, 5, 8, 13, 21):
 #15169: 5, #15168: 8
 ```
 
+### Proxy Voting (Facilitator Only)
+The facilitator can submit votes on behalf of other users:
+```
+vote for @**username** #15169: 5, #15168: 8
+vote for John Doe #15169: 5, #15168: 8
+```
+
 ### Manage Voters
 ```
 list

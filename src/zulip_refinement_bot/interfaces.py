@@ -132,3 +132,9 @@ class MessageHandlerInterface(ABC):
 
     @abstractmethod
     def handle_finish(self, message: dict[str, Any], content: str) -> None: ...
+
+    @abstractmethod
+    def is_proxy_vote_format(self, content: str) -> bool: ...
+
+    @abstractmethod
+    def handle_proxy_vote(self, message: dict[str, Any], content: str) -> None: ...

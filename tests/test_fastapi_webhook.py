@@ -374,3 +374,25 @@ class TestBotIntegration:
         # Verify bot received the voting content
         call_args = mock_bot.handle_message.call_args[0][0]
         assert call_args["content"] == "#123: 5, #124: 8, #125: 3"
+
+
+def test_webhook_proxy_vote_message(client: TestClient) -> None:
+    """Test webhook handling of proxy vote message."""
+    payload = {
+        "type": "private",
+        "sender_email": "facilitator@example.com",
+        "sender_full_name": "Test Facilitator",
+        "content": "vote for @**bob** #123: 5, #124: 8",
+        "timestamp": 1642678800,
+    }
+
+    with patch("zulip_refinement_bot.fastapi_app.bot") as mock_bot:
+        mock_bot.handle_message.return_value = {"status": "success", "action": "proxy_vote"}
+
+        response = client.post("/webhook", json=payload)
+
+        assert response.status_code == 200
+
+        # Verify bot received the proxy vote content
+        call_args = mock_bot.handle_message.call_args[0][0]
+        assert call_args["content"] == "vote for @**bob** #123: 5, #124: 8"

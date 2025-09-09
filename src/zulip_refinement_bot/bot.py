@@ -72,6 +72,13 @@ Submit estimates for all issues in the format:
 #15169: 5, #15168: 8, #15167: 3
 ```
 
+**Proxy voting (facilitator only):**
+Submit votes on behalf of another user:
+```
+vote for @**username** #15169: 5, #15168: 8, #15167: 3
+vote for John Doe #15169: 5, #15168: 8, #15167: 3
+```
+
 **Multi-voter management:**
 Add or remove multiple voters using various formats:
 ```
@@ -152,6 +159,9 @@ finish #15169: 5 After discussion we agreed it's medium complexity, #15168: 3 Si
             elif content.lower().startswith("finish"):
                 self.message_handler.handle_finish(message, content)
                 return "finish"
+            elif self.message_handler.is_proxy_vote_format(content):
+                self.message_handler.handle_proxy_vote(message, content)
+                return "proxy_vote"
             else:
                 if self.message_handler.is_vote_format(content):
                     self.message_handler.handle_vote_submission(message, content)
