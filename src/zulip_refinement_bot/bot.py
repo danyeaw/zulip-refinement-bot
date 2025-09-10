@@ -272,7 +272,7 @@ finish #15169: 5 After discussion we agreed it's medium complexity, #15168: 3 Si
 
 {voter_mentions} - You haven't submitted your estimates yet for the current batch refinement.
 
-Please review the issues and DM me your votes soon. Send me 'status' to see the current batch details."""
+Please review the issues and DM me your votes soon."""
 
         issue_count = len(active_batch.issues) if active_batch.issues else 0
         topic_name = f"Refinement: {active_batch.date} ({issue_count} issues)"
