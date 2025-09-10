@@ -43,12 +43,12 @@ jobs:
       run: |
         pytest tests/ -v --cov=src/zulip_refinement_bot --cov-report=xml --cov-report=html
 
-    - name: Test FastAPI application
+    - name: Test Flask application
       shell: bash -l {0}
       run: |
-        # Test FastAPI app imports and basic functionality
-        python -c "from src.zulip_refinement_bot.fastapi_app import app; print('✓ FastAPI app imports successfully')"
-        python -c "from src.zulip_refinement_bot.webhook_bot import WebhookRefinementBot; print('✓ Webhook bot imports successfully')"
+        # Test Flask app imports and basic functionality
+        python -c "from src.zulip_refinement_bot.flask_app import app; print('✓ Flask app imports successfully')"
+        python -c "from src.zulip_refinement_bot.bot import RefinementBot; print('✓ Bot imports successfully')"
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3

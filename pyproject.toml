@@ -9,10 +9,7 @@ description = "A modern Zulip bot for batch story point estimation and refinemen
 readme = "README.md"
 license = {file = "LICENSE"}
 authors = [
-    {name = "Your Name", email = "your.email@example.com"},
-]
-maintainers = [
-    {name = "Your Name", email = "your.email@example.com"},
+    {name = "Dan Yeaw", email = "dan@yeaw.me"},
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -20,8 +17,7 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Communications :: Chat",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
@@ -37,8 +33,7 @@ dependencies = [
     "rich>=13.0.0",
     "typer>=0.9.0",
     "holidays>=0.34",
-    "fastapi>=0.100.0",
-    "uvicorn[standard]>=0.23.0",
+    "flask>=2.3.0",
 ]
 
 [project.optional-dependencies]
@@ -59,14 +54,14 @@ test = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/zulip-refinement-bot"
-Documentation = "https://github.com/yourusername/zulip-refinement-bot#readme"
-Repository = "https://github.com/yourusername/zulip-refinement-bot"
-Issues = "https://github.com/yourusername/zulip-refinement-bot/issues"
+Homepage = "https://github.com/danyeaw/zulip-refinement-bot"
+Documentation = "https://github.com/danyeaw/zulip-refinement-bot#readme"
+Repository = "https://github.com/danyeaw/zulip-refinement-bot"
+Issues = "https://github.com/danyeaw/zulip-refinement-bot/issues"
 
 [project.scripts]
 zulip-refinement-bot = "zulip_refinement_bot.cli:main"
-zulip-refinement-bot-server = "zulip_refinement_bot.fastapi_app:main"
+zulip-refinement-bot-server = "zulip_refinement_bot.flask_app:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/zulip_refinement_bot"]
@@ -100,10 +95,6 @@ module = "zulip.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = "fastapi.*"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
 module = "tests.*"
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
@@ -113,11 +104,6 @@ disallow_untyped_decorators = false
 module = "zulip_refinement_bot.cli"
 disallow_untyped_decorators = false
 
-[[tool.mypy.overrides]]
-module = "zulip_refinement_bot.fastapi_app"
-disallow_untyped_decorators = false
-
-# Pytest configuration
 [tool.pytest.ini_options]
 minversion = "7.0"
 testpaths = ["tests"]

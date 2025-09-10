@@ -19,7 +19,6 @@ app = typer.Typer(
     add_completion=False,
 )
 
-# Add migration commands as a subcommand
 app.add_typer(migrate_app, name="migrate")
 console = Console()
 
@@ -54,7 +53,6 @@ def setup_logging(log_level: str = "INFO", log_format: str = "json") -> None:
             cache_logger_on_first_use=True,
         )
 
-        # Configure standard library logging
         logging.basicConfig(
             format="%(message)s",
             level=level,
@@ -80,9 +78,6 @@ def setup_logging(log_level: str = "INFO", log_format: str = "json") -> None:
         )
 
 
-# Removed the 'run' command - the bot now only supports webhook mode via the 'server' command
-
-
 @app.command()  # type: ignore[misc]
 def version() -> None:
     """Show version information."""
@@ -103,11 +98,11 @@ def server(
         "-p",
         help="Port to bind the server to",
     ),
-    reload: bool = typer.Option(
+    debug: bool = typer.Option(
         False,
-        "--reload",
-        "-r",
-        help="Enable auto-reload for development",
+        "--debug",
+        "-d",
+        help="Enable debug mode (auto-reload + interactive debugger)",
     ),
     config_file: Path | None = typer.Option(
         None,
@@ -133,9 +128,7 @@ def server(
         case_sensitive=False,
     ),
 ) -> None:
-    """Run the FastAPI webhook server for the Zulip Refinement Bot."""
-    import uvicorn
-
+    """Run the Flask webhook server for the Zulip Refinement Bot."""
     # Set up logging first
     setup_logging(log_level, log_format)
     logger = structlog.get_logger(__name__)
@@ -150,20 +143,15 @@ def server(
             Config()
 
         logger.info(
-            "Starting FastAPI server for Zulip Refinement Bot",
+            "Starting Flask server for Zulip Refinement Bot",
             host=host,
             port=port,
-            reload=reload,
+            debug=debug,
         )
 
-        # Run the FastAPI server
-        uvicorn.run(
-            "zulip_refinement_bot.fastapi_app:app",
-            host=host,
-            port=port,
-            reload=reload,
-            log_level=log_level.lower(),
-        )
+        from .flask_app import app
+
+        app.run(host=host, port=port, debug=debug)
 
     except KeyboardInterrupt:
         logger.info("Server stopped by user")
