@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 import structlog
-from flask import Flask, request
+from flask import Flask, current_app, request
 from werkzeug.exceptions import BadRequest
 
 from .bot import RefinementBot
@@ -77,7 +77,7 @@ def create_app() -> Flask:
 
 def get_bot_instance() -> RefinementBot:
     """Get or create the bot instance from app config."""
-    app = cast(Flask, request.current_app)
+    app = cast(Flask, current_app)
     if app.config["bot_instance"] is None:
         app.config["config"] = Config()
         app.config["bot_instance"] = RefinementBot(app.config["config"])
