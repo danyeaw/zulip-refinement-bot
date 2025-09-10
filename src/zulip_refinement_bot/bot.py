@@ -233,25 +233,26 @@ finish #15169: 5 After discussion we agreed it's medium complexity, #15168: 3 Si
     ) -> None:
         """Check if reminders need to be sent and send them."""
         time_until_deadline = deadline - now
+        total_minutes = time_until_deadline.total_seconds() / 60
         hours_until_deadline = round(time_until_deadline.total_seconds() / 3600)
 
         half_deadline_hours = self.config.default_deadline_hours // 2
 
-        if hours_until_deadline == half_deadline_hours:
+        if hours_until_deadline <= half_deadline_hours and total_minutes >= 60:
             reminder_type = "halfway"
             if not self.container.get_database().has_reminder_been_sent(
                 active_batch.id, reminder_type
             ):
                 self._send_reminder(
-                    active_batch, reminder_type, f"{half_deadline_hours} hours remaining"
+                    active_batch, reminder_type, f"Less than {half_deadline_hours} hours remaining"
                 )
 
-        elif hours_until_deadline == 1:
+        elif 10 < total_minutes < 60:
             reminder_type = "1_hour"
             if not self.container.get_database().has_reminder_been_sent(
                 active_batch.id, reminder_type
             ):
-                self._send_reminder(active_batch, reminder_type, "1 hour remaining")
+                self._send_reminder(active_batch, reminder_type, "Less than 1 hour remaining")
 
     def _send_reminder(self, active_batch: Any, reminder_type: str, time_remaining: str) -> None:
         """Send a reminder to voters who haven't submitted estimates yet."""
@@ -273,12 +274,15 @@ finish #15169: 5 After discussion we agreed it's medium complexity, #15168: 3 Si
 
 Please review the issues and DM me your votes soon. Send me 'status' to see the current batch details."""
 
+        issue_count = len(active_batch.issues) if active_batch.issues else 0
+        topic_name = f"Refinement: {active_batch.date} ({issue_count} issues)"
+
         try:
             response = self.zulip_client.send_message(
                 {
                     "type": "stream",
                     "to": self.config.stream_name,
-                    "topic": "Batch Refinement",
+                    "topic": topic_name,
                     "content": reminder_message,
                 }
             )
