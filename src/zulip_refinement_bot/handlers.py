@@ -229,6 +229,12 @@ class MessageHandler(MessageHandlerInterface):
 
         except (AuthorizationError, ValidationError, VotingError) as e:
             self._send_reply(message, f"❌ {e.message}")
+        except BatchError as e:
+            if "No active batch found" in str(e):
+                logger.info("Batch completion race condition in vote handler", error=str(e))
+            else:
+                logger.error("Batch error in vote submission", error=str(e))
+                self._send_reply(message, f"❌ {e.message}")
         except Exception as e:
             logger.error("Error handling vote submission", error=str(e))
             self._send_reply(message, "❌ Error processing votes. Please try again.")
@@ -666,6 +672,12 @@ class MessageHandler(MessageHandlerInterface):
 
         except (AuthorizationError, ValidationError, VotingError) as e:
             self._send_reply(message, f"❌ {e.message}")
+        except BatchError as e:
+            if "No active batch found" in str(e):
+                logger.info("Batch completion race condition in proxy vote handler", error=str(e))
+            else:
+                logger.error("Batch error in proxy vote submission", error=str(e))
+                self._send_reply(message, f"❌ {e.message}")
         except Exception as e:
             logger.error("Error handling proxy vote submission", error=str(e))
             self._send_reply(message, "❌ Error processing proxy votes. Please try again.")
@@ -973,6 +985,31 @@ Posting to #{self.config.stream_name} now..."""
             logger.error("Cannot process batch completion: batch ID is None")
             return
 
+        # Check current batch status in database
+        current_active_batch = self.batch_service.get_active_batch()
+        if current_active_batch is None:
+            logger.info(
+                "Batch already completed, continuing with results posting",
+                batch_id=batch.id,
+            )
+            # Continue with the passed batch data to post results
+        elif current_active_batch.id != batch.id:
+            logger.warning(
+                "Different active batch found, using current batch",
+                passed_batch_id=batch.id,
+                active_batch_id=current_active_batch.id,
+            )
+            # Use the current active batch instead
+            batch = current_active_batch
+        else:
+            # Use the current batch data from database (more up-to-date)
+            batch = current_active_batch
+
+        # Ensure batch has a valid ID
+        if batch.id is None:
+            logger.error("Cannot process batch completion: batch ID is None after retrieval")
+            return
+
         try:
             votes = self.voting_service.get_batch_votes(batch.id)
             vote_count, total_voters, _ = self.voting_service.check_completion_status(batch.id)
@@ -991,12 +1028,25 @@ Posting to #{self.config.stream_name} now..."""
 
             if has_discussion_issues:
                 # Move to discussion phase instead of completing
-                self.batch_service.start_discussion_phase(batch.id, batch.facilitator)
+                batch_already_processed = False
+                try:
+                    self.batch_service.start_discussion_phase(batch.id, batch.facilitator)
+                except BatchError as e:
+                    if "No active batch found" in str(e):
+                        logger.warning(
+                            "Batch already processed by another request, will still post results",
+                            batch_id=batch.id,
+                            error=str(e),
+                        )
+                        batch_already_processed = True
+                    else:
+                        raise
 
-                # Update original message to show discussion phase
-                self._update_batch_discussion_status(batch, vote_count, total_voters)
+                # Update original message to show discussion phase (only if we started it)
+                if not batch_already_processed:
+                    self._update_batch_discussion_status(batch, vote_count, total_voters)
 
-                # Post initial results with discussion items
+                # Post initial results with discussion items (always post results)
                 self._post_estimation_results(batch, votes, vote_count, total_voters)
 
                 logger.info(
@@ -1013,11 +1063,24 @@ Posting to #{self.config.stream_name} now..."""
                         batch.id, issue_number, points, "Consensus reached during initial voting"
                     )
 
-                self.batch_service.complete_batch(batch.id, batch.facilitator)
+                batch_already_completed = False
+                try:
+                    self.batch_service.complete_batch(batch.id, batch.facilitator)
+                except BatchError as e:
+                    if "No active batch found" in str(e):
+                        logger.warning(
+                            "Batch already completed by another request, will still post results",
+                            batch_id=batch.id,
+                            error=str(e),
+                        )
+                        batch_already_completed = True
+                    else:
+                        raise
 
-                self._update_batch_completion_status(
-                    batch, vote_count, total_voters, auto_completed
-                )
+                if not batch_already_completed:
+                    self._update_batch_completion_status(
+                        batch, vote_count, total_voters, auto_completed
+                    )
 
                 final_estimates = {
                     issue_number: (points, "Consensus reached during initial voting")

@@ -88,6 +88,36 @@ class DatabaseManager(DatabaseInterface):
 
             return BatchData(**batch_data, issues=issues)
 
+    def get_most_recent_batch(self) -> BatchData | None:
+        """Get the most recent batch regardless of status.
+
+        Returns:
+            Most recent batch data or None if no batches exist
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute("SELECT * FROM batches ORDER BY created_at DESC LIMIT 1")
+            row = cursor.fetchone()
+
+            if not row:
+                return None
+
+            batch_data = dict(row)
+
+            # Get issues for this batch
+            issues_cursor = conn.execute(
+                "SELECT * FROM issues WHERE batch_id = ? ORDER BY id", (batch_data["id"],)
+            )
+            issues = [
+                IssueData(
+                    issue_number=issue_row["issue_number"],
+                    url=issue_row["url"],
+                )
+                for issue_row in issues_cursor.fetchall()
+            ]
+
+            return BatchData(**batch_data, issues=issues)
+
     def create_batch(self, date: str, deadline: str, facilitator: str) -> int:
         """Create a new batch and return its ID.
 

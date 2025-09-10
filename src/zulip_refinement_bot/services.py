@@ -591,7 +591,9 @@ class ResultsService:
                 # Add questions for voters with outlying estimates
                 if estimates:
                     min_est, max_est = min(estimates), max(estimates)
-                    if max_est - min_est > 5:  # Significant spread
+                    # Lower threshold for discussion questions - any spread >= 3 or multiple clusters
+                    should_ask_questions = (max_est - min_est >= 3) or (len(clusters) > 1)
+                    if should_ask_questions:
                         high_voters = [
                             v.voter
                             for v in votes_by_issue[issue.issue_number]
@@ -605,16 +607,28 @@ class ResultsService:
 
                         if high_voters:
                             high_mentions = " @**".join(high_voters)
-                            results_content += (
-                                f"    @**{high_mentions}** : What complexity are you seeing "
-                                f"that pushes this to {max_est}?\n"
-                            )
+                            if len(clusters) > 1:
+                                results_content += (
+                                    f"    @**{high_mentions}** : What complexity or risks are you seeing "
+                                    f"that justify {max_est} points over the {min_est}-{sorted(estimates)[len(estimates) // 2]} point estimates?\n"
+                                )
+                            else:
+                                results_content += (
+                                    f"    @**{high_mentions}** : What complexity are you seeing "
+                                    f"that pushes this to {max_est} points?\n"
+                                )
                         if low_voters:
                             low_mentions = " @**".join(low_voters)
-                            results_content += (
-                                f"    @**{low_mentions}** : What's making this feel like "
-                                f"a smaller story ({min_est} points)?\n"
-                            )
+                            if len(clusters) > 1:
+                                results_content += (
+                                    f"    @**{low_mentions}** : What makes this feel simpler "
+                                    f"({min_est} points) compared to the {max_est} point estimates?\n"
+                                )
+                            else:
+                                results_content += (
+                                    f"    @**{low_mentions}** : What's making this feel like "
+                                    f"a smaller story ({min_est} points)?\n"
+                                )
 
                 results_content += "\n"
 
