@@ -54,6 +54,7 @@ def test_config_default_voters():
         "Dan Yeaw",
         "Daniel Holth",
         "Jannis Leidel",
+        "Ken Odegard",
         "Mahe Iram Khan",
         "Ryan Keith",
         "Sophia Castellarin",

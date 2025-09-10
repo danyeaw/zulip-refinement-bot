@@ -32,6 +32,7 @@ class Config(BaseSettings):
         "Dan Yeaw",
         "Daniel Holth",
         "Jannis Leidel",
+        "Ken Odegard",
         "Mahe Iram Khan",
         "Ryan Keith",
         "Sophia Castellarin",
