@@ -87,9 +87,10 @@ remove Alice and Bob
 ```
 
 **Discussion phase:**
-When consensus isn't reached, complete discussion with:
+When consensus isn't reached, complete individual items or multiple items:
 ```
-finish #15169: 5 After discussion we agreed it's medium complexity, #15168: 3 Simple fix
+finish #15169: 5 After discussion we agreed it's medium complexity
+finish #15168: 3 Simple fix, #15167: 8 More complex than expected
 ```
 
 **Rules:**
@@ -211,19 +212,21 @@ finish #15169: 5 After discussion we agreed it's medium complexity, #15168: 3 Si
         now = datetime.now(UTC)
 
         if now >= deadline:
-            logger.info(
-                "Batch deadline expired, processing results",
-                batch_id=active_batch.id,
-                deadline=deadline,
-                now=now,
-            )
-            try:
-                self.batch_service.complete_batch(active_batch.id, active_batch.facilitator)
-                self.message_handler._process_batch_completion(active_batch, auto_completed=False)
-            except Exception as e:
-                logger.error(
-                    "Error processing expired batch", batch_id=active_batch.id, error=str(e)
+            if active_batch.status == "active":
+                logger.info(
+                    "Batch deadline expired, processing results",
+                    batch_id=active_batch.id,
+                    deadline=deadline,
+                    now=now,
                 )
+                try:
+                    self.message_handler._process_batch_completion(
+                        active_batch, auto_completed=True
+                    )
+                except Exception as e:
+                    logger.error(
+                        "Error processing expired batch", batch_id=active_batch.id, error=str(e)
+                    )
             return
 
         self._check_and_send_reminders(active_batch, deadline, now)

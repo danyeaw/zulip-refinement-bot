@@ -33,9 +33,11 @@ def voting_service(test_config: Config, db_manager: DatabaseManager) -> VotingSe
 
 
 @pytest.fixture
-def results_service(test_config: Config, mock_github_api: MagicMock) -> ResultsService:
+def results_service(
+    test_config: Config, mock_github_api: MagicMock, batch_service: BatchService
+) -> ResultsService:
     """Create a ResultsService for testing."""
-    return ResultsService(test_config, mock_github_api)
+    return ResultsService(test_config, mock_github_api, batch_service)
 
 
 @pytest.fixture
@@ -242,10 +244,11 @@ def test_message_handler_handle_discussion_complete_success(
         "sender_email": "test@example.com",
     }
 
-    # Mock the parsing and completion
+    # Mock the parsing and completion (only finishing 1 of 2 issues)
     with (
         patch.object(message_handler, "_parse_finish_input") as mock_parse,
-        patch.object(message_handler, "_post_finish_results") as mock_post,
+        patch.object(message_handler, "_post_updated_estimation_results") as mock_post_updated,
+        patch.object(message_handler, "_send_reply") as mock_reply,
     ):
         mock_parse.return_value = {"1234": (5, "After discussion")}
 
@@ -254,7 +257,8 @@ def test_message_handler_handle_discussion_complete_success(
 
         # Verify methods were called
         mock_parse.assert_called_once()
-        mock_post.assert_called_once()
+        mock_post_updated.assert_called_once()  # Should post updated results, not complete
+        mock_reply.assert_called_once()  # Should reply saying item completed
 
 
 def test_message_handler_handle_discussion_complete_no_active_batch(
@@ -499,7 +503,7 @@ def test_discussion_complete_integration_full_discussion_workflow(
         mock_post.assert_called_once()
         mock_reply.assert_called_once_with(
             message,
-            "✅ Discussion phase completed successfully. Final results posted to the stream.",
+            "✅ All discussion items completed! Final results posted to the stream.",
         )
 
         # Verify batch is now completed

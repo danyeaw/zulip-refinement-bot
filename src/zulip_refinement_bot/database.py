@@ -74,7 +74,6 @@ class DatabaseManager(DatabaseInterface):
 
             batch_data = dict(row)
 
-            # Get issues for this batch
             issues_cursor = conn.execute(
                 "SELECT * FROM issues WHERE batch_id = ? ORDER BY id", (batch_data["id"],)
             )
@@ -104,7 +103,6 @@ class DatabaseManager(DatabaseInterface):
 
             batch_data = dict(row)
 
-            # Get issues for this batch
             issues_cursor = conn.execute(
                 "SELECT * FROM issues WHERE batch_id = ? ORDER BY id", (batch_data["id"],)
             )
@@ -226,7 +224,6 @@ class DatabaseManager(DatabaseInterface):
         """
         try:
             with sqlite3.connect(self.db_path) as conn:
-                # Insert or replace the final estimate
                 conn.execute(
                     """
                     INSERT OR REPLACE INTO final_estimates
@@ -315,7 +312,6 @@ class DatabaseManager(DatabaseInterface):
                 )
                 return True
         except sqlite3.IntegrityError:
-            # Duplicate vote (voter already voted for this issue in this batch)
             logger.warning(
                 "Duplicate vote attempt", batch_id=batch_id, voter=voter, issue_number=issue_number
             )
@@ -338,7 +334,6 @@ class DatabaseManager(DatabaseInterface):
             - was_update: True if this was an update, False if it was a new vote
         """
         with sqlite3.connect(self.db_path) as conn:
-            # Check if vote already exists
             cursor = conn.execute(
                 "SELECT points FROM votes WHERE batch_id = ? AND issue_number = ? AND voter = ?",
                 (batch_id, issue_number, voter),
@@ -346,7 +341,6 @@ class DatabaseManager(DatabaseInterface):
             existing_vote = cursor.fetchone()
 
             if existing_vote:
-                # Update existing vote
                 old_points = existing_vote[0]
                 conn.execute(
                     """UPDATE votes SET points = ?, created_at = CURRENT_TIMESTAMP
@@ -364,7 +358,6 @@ class DatabaseManager(DatabaseInterface):
                 )
                 return True, True
             else:
-                # Insert new vote
                 conn.execute(
                     "INSERT INTO votes (batch_id, issue_number, voter, points) VALUES (?, ?, ?, ?)",
                     (batch_id, issue_number, voter, points),
@@ -503,6 +496,42 @@ class DatabaseManager(DatabaseInterface):
                 error=str(e),
             )
 
+    def update_batch_results_message_id(self, batch_id: int, results_message_id: int) -> None:
+        """Update the results message ID for a batch.
+
+        Args:
+            batch_id: ID of the batch
+            results_message_id: Zulip message ID of the estimation results message
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.execute(
+                    "UPDATE batches SET results_message_id = ? WHERE id = ?",
+                    (results_message_id, batch_id),
+                )
+                rows_affected = cursor.rowcount
+                conn.commit()
+
+                if rows_affected == 0:
+                    logger.warning(
+                        "No batch found to update results message ID",
+                        batch_id=batch_id,
+                        results_message_id=results_message_id,
+                    )
+                else:
+                    logger.info(
+                        "Updated batch results message ID",
+                        batch_id=batch_id,
+                        results_message_id=results_message_id,
+                    )
+        except Exception as e:
+            logger.error(
+                "Failed to update batch results message ID",
+                batch_id=batch_id,
+                results_message_id=results_message_id,
+                error=str(e),
+            )
+
     def add_batch_voters(self, batch_id: int, voters: list[str]) -> None:
         """Add voters to a batch.
 
@@ -622,7 +651,6 @@ class DatabaseManager(DatabaseInterface):
                 )
                 return True, True
             else:
-                # Insert new abstention
                 conn.execute(
                     "INSERT INTO abstentions (batch_id, issue_number, voter) VALUES (?, ?, ?)",
                     (batch_id, issue_number, voter),

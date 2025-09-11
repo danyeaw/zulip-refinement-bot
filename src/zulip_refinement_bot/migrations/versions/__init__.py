@@ -7,6 +7,7 @@ from .m004_final_estimates import FinalEstimatesMigration
 from .m005_remove_title_column import RemoveTitleColumnMigration
 from .m006_add_abstentions import AddAbstentionsMigration
 from .m007_add_reminders import AddRemindersMigration
+from .m008_add_results_message_id import AddResultsMessageIdMigration
 
 # All migrations in order
 ALL_MIGRATIONS = [
@@ -17,6 +18,7 @@ ALL_MIGRATIONS = [
     RemoveTitleColumnMigration,
     AddAbstentionsMigration,
     AddRemindersMigration,
+    AddResultsMessageIdMigration,
 ]
 
 __all__ = [
@@ -27,5 +29,6 @@ __all__ = [
     "RemoveTitleColumnMigration",
     "AddAbstentionsMigration",
     "AddRemindersMigration",
+    "AddResultsMessageIdMigration",
     "ALL_MIGRATIONS",
 ]

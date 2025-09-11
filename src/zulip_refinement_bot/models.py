@@ -21,11 +21,12 @@ class BatchData(BaseModel):
     date: str = Field(..., description="Batch date (YYYY-MM-DD)")
     deadline: str = Field(..., description="Deadline in ISO format")
     facilitator: str = Field(..., description="Batch facilitator name")
-    status: str = Field(
-        default="active", description="Batch status"
-    )  # active, discussing, completed, cancelled
+    status: str = Field(default="active", description="Batch status")
     message_id: int | None = Field(
         None, description="Zulip message ID of the batch refinement message"
+    )
+    results_message_id: int | None = Field(
+        None, description="Zulip message ID of the estimation results message"
     )
     created_at: datetime | None = Field(None, description="Creation timestamp")
     issues: list[IssueData] = Field(default_factory=list, description="Issues in batch")

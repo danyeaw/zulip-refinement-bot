@@ -80,7 +80,9 @@ class Container:
     def get_results_service(self) -> ResultsService:
         if ResultsService not in self._instances:
             self._instances[ResultsService] = ResultsService(
-                config=self.config, github_api=self.get_github_api()
+                config=self.config,
+                github_api=self.get_github_api(),
+                batch_service=self.get_batch_service(),
             )
         return self._instances[ResultsService]  # type: ignore[return-value]
 

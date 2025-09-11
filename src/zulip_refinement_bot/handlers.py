@@ -253,7 +253,7 @@ class MessageHandler(MessageHandlerInterface):
 
         # Handle Zulip mention format: @**username**
         if text.startswith("@**") and text.endswith("**"):
-            return text[3:-2]  # Remove @** and **
+            return text[3:-2]
 
         # Return as-is for plain text names
         return text
@@ -282,9 +282,9 @@ class MessageHandler(MessageHandlerInterface):
         voter_names = []
         for name_part in text.split(","):
             name_part = name_part.strip()
-            if name_part:  # Skip empty parts
+            if name_part:
                 clean_name = self._parse_voter_name(name_part)
-                if clean_name and clean_name not in voter_names:  # Avoid duplicates
+                if clean_name and clean_name not in voter_names:
                     voter_names.append(clean_name)
 
         return voter_names
@@ -482,9 +482,10 @@ class MessageHandler(MessageHandlerInterface):
             self._send_reply(message, "❌ Error removing voter(s). Please try again.")
 
     def handle_finish(self, message: dict[str, Any], content: str) -> None:
-        """Handle discussion complete command with final estimates.
+        """Handle finish command for individual items or multiple items during discussion.
 
-        Expected format: discussion complete #issue1: points rationale, #issue2: points rationale
+        Expected format: finish #issue1: points rationale, #issue2: points rationale
+        Automatically updates results and completes discussion when all items are done.
         """
         try:
             active_batch = self.batch_service.get_active_batch()
@@ -501,6 +502,13 @@ class MessageHandler(MessageHandlerInterface):
 
             requester = message["sender_full_name"]
 
+            if requester != active_batch.facilitator:
+                self._send_reply(
+                    message,
+                    f"❌ Only the facilitator ({active_batch.facilitator}) can finish discussion items.",
+                )
+                return
+
             # Parse the final estimates from the content
             final_estimates = self._parse_finish_input(content)
 
@@ -508,28 +516,64 @@ class MessageHandler(MessageHandlerInterface):
                 self._send_reply(
                     message,
                     "❌ No valid final estimates found. Please use format:\n"
-                    "`finish #1234: 5 rationale here, #1235: 8 another rationale`",
+                    "`finish #1234: 5 rationale here` or `finish #1234: 5 rationale, #1235: 8 rationale`",
                 )
                 return
 
-            # Complete the discussion phase
-            completed_batch = self.batch_service.complete_discussion_phase(
-                active_batch.id, requester, final_estimates
-            )
+            # Store the final estimates for these items
+            for issue_number, (final_points, rationale) in final_estimates.items():
+                self.batch_service.database.store_final_estimate(
+                    active_batch.id, issue_number, final_points, rationale
+                )
 
-            # Generate and post final results
-            self._post_finish_results(completed_batch, final_estimates)
+            # Check if all discussion items are now complete
+            all_complete = self._check_discussion_complete(active_batch)
 
-            self._send_reply(
-                message,
-                "✅ Discussion phase completed successfully. Final results posted to the stream.",
-            )
+            if all_complete:
+                # Complete the entire discussion phase
+                completed_batch = self.batch_service.complete_discussion_phase(
+                    active_batch.id,
+                    requester,
+                    {},  # Empty since estimates already stored
+                )
+
+                # Generate and post final results
+                all_final_estimates = self.batch_service.database.get_final_estimates(
+                    active_batch.id
+                )
+                # Convert to expected format for _post_finish_results
+                final_estimates_dict = {
+                    est.issue_number: (est.final_points, est.rationale)
+                    for est in all_final_estimates
+                }
+                self._post_finish_results(completed_batch, final_estimates_dict)
+
+                self._send_reply(
+                    message,
+                    "✅ All discussion items completed! Final results posted to the stream.",
+                )
+            else:
+                # Individual items completed - post updated estimation results
+                self._post_updated_estimation_results(active_batch)
+
+                issue_count = len(final_estimates)
+                if issue_count == 1:
+                    issue_num = list(final_estimates.keys())[0]
+                    self._send_reply(
+                        message,
+                        f"✅ Issue #{issue_num} completed. Updated results posted to the stream.",
+                    )
+                else:
+                    self._send_reply(
+                        message,
+                        f"✅ {issue_count} items completed. Updated results posted to the stream.",
+                    )
 
         except (BatchError, AuthorizationError, ValidationError) as e:
             self._send_reply(message, f"❌ {e.message}")
         except Exception as e:
-            logger.error("Error handling discussion complete", error=str(e))
-            self._send_reply(message, "❌ Error completing discussion. Please try again.")
+            logger.error("Error handling finish command", error=str(e))
+            self._send_reply(message, "❌ Error finishing items. Please try again.")
 
     def _parse_finish_input(self, content: str) -> dict[str, tuple[int, str]]:
         """Parse finish command input into final estimates.
@@ -542,7 +586,6 @@ class MessageHandler(MessageHandlerInterface):
         """
         import re
 
-        # Remove the "finish" prefix
         content = content.replace("finish", "").strip()
 
         # Pattern to match #issue: points rationale
@@ -564,6 +607,124 @@ class MessageHandler(MessageHandlerInterface):
 
         return final_estimates
 
+    def _check_discussion_complete(self, batch: BatchData) -> bool:
+        """Check if all discussion items have been completed.
+
+        Args:
+            batch: The active batch
+
+        Returns:
+            True if all discussion issues have final estimates
+        """
+        if not batch.id:
+            return False
+
+        # Get all votes to determine which issues need discussion
+        votes = self.voting_service.get_batch_votes(batch.id)
+        consensus_estimates = self._extract_consensus_estimates(batch, votes)
+
+        # Get existing final estimates
+        final_estimates = self.batch_service.database.get_final_estimates(batch.id)
+        final_estimate_issues = {est.issue_number for est in final_estimates}
+
+        # Check which issues need discussion (no consensus and not yet finalized)
+        discussion_needed_issues = set()
+        for issue in batch.issues:
+            if (
+                issue.issue_number not in consensus_estimates
+                and issue.issue_number not in final_estimate_issues
+            ):
+                discussion_needed_issues.add(issue.issue_number)
+
+        return len(discussion_needed_issues) == 0
+
+    def _post_updated_estimation_results(self, batch: BatchData) -> None:
+        """Update the original estimation results message showing progress.
+
+        Args:
+            batch: The active batch
+        """
+        try:
+            if batch.id is not None:
+                votes = self.voting_service.get_batch_votes(batch.id)
+                vote_count, total_voters, _ = self.voting_service.check_completion_status(batch.id)
+                batch_voters = self.batch_service.database.get_batch_voters(batch.id)
+            else:
+                votes = []
+                vote_count = total_voters = 0
+                batch_voters = []
+
+            # Generate updated results content
+            results_content = self.results_service.generate_updated_results_content(
+                batch, votes, vote_count, total_voters, batch_voters
+            )
+
+            # Try to edit the original results message if we have the message ID
+            if batch.results_message_id:
+                edit_response = self.zulip_client.update_message(
+                    {
+                        "message_id": batch.results_message_id,
+                        "content": results_content,
+                    }
+                )
+
+                if edit_response.get("result") == "success":
+                    logger.info(
+                        "Updated estimation results message",
+                        batch_id=batch.id,
+                        results_message_id=batch.results_message_id,
+                    )
+                else:
+                    error_msg = edit_response.get("msg", "").lower()
+                    if "time limit" in error_msg or "edit" in error_msg:
+                        # Fall back to posting new message if edit window expired
+                        self._post_new_estimation_results(batch, results_content)
+                    else:
+                        logger.error(
+                            "Failed to update estimation results message",
+                            batch_id=batch.id,
+                            response=edit_response,
+                        )
+                        # Fall back to posting new message
+                        self._post_new_estimation_results(batch, results_content)
+            else:
+                # No results message ID stored, post new message
+                self._post_new_estimation_results(batch, results_content)
+
+        except Exception as e:
+            logger.error("Error updating estimation results", batch_id=batch.id, error=str(e))
+
+    def _post_new_estimation_results(self, batch: BatchData, results_content: str) -> None:
+        """Post new estimation results message as fallback.
+
+        Args:
+            batch: The active batch
+            results_content: The results content to post
+        """
+        topic_name = f"Refinement: {batch.date} ({len(batch.issues)} issues)"
+
+        response = self.zulip_client.send_message(
+            {
+                "type": "stream",
+                "to": self.config.stream_name,
+                "topic": topic_name,
+                "content": results_content,
+            }
+        )
+
+        if response.get("result") == "success":
+            logger.info(
+                "Posted new estimation results",
+                batch_id=batch.id,
+                topic=topic_name,
+            )
+        else:
+            logger.error(
+                "Failed to post new estimation results",
+                batch_id=batch.id,
+                response=response,
+            )
+
     def is_vote_format(self, content: str) -> bool:
         """Check if content looks like a vote submission.
 
@@ -573,7 +734,6 @@ class MessageHandler(MessageHandlerInterface):
         Returns:
             True if content appears to be in vote format
         """
-        # First check if it's a proxy vote - if so, it's not a regular vote
         if self.is_proxy_vote_format(content):
             return False
 
@@ -586,7 +746,6 @@ class MessageHandler(MessageHandlerInterface):
         ):
             processed_content = processed_content[1:-1].strip()
         elif "`" in processed_content:
-            # If backticks are present but not properly paired, reject
             return False
 
         vote_pattern = re.compile(r"#\d+:\s*\d+")
@@ -1417,11 +1576,24 @@ Posting to #{self.config.stream_name} now..."""
             )
 
             if response.get("result") == "success":
-                logger.info(
-                    "Posted estimation results",
-                    batch_id=batch.id,
-                    topic=topic_name,
-                )
+                # Store the results message ID for future updates
+                if batch.id and "id" in response:
+                    results_message_id = response["id"]
+                    self.batch_service.database.update_batch_results_message_id(
+                        batch.id, results_message_id
+                    )
+                    logger.info(
+                        "Posted estimation results and stored message ID",
+                        batch_id=batch.id,
+                        results_message_id=results_message_id,
+                        topic=topic_name,
+                    )
+                else:
+                    logger.info(
+                        "Posted estimation results",
+                        batch_id=batch.id,
+                        topic=topic_name,
+                    )
             else:
                 logger.error(
                     "Failed to post estimation results",

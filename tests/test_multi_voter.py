@@ -30,9 +30,11 @@ def voting_service(test_config: Config, db_manager: DatabaseManager) -> VotingSe
 
 
 @pytest.fixture
-def results_service(test_config: Config, mock_github_api: MagicMock) -> ResultsService:
+def results_service(
+    test_config: Config, mock_github_api: MagicMock, batch_service: BatchService
+) -> ResultsService:
     """Create a ResultsService for testing."""
-    return ResultsService(test_config, mock_github_api)
+    return ResultsService(test_config, mock_github_api, batch_service)
 
 
 @pytest.fixture

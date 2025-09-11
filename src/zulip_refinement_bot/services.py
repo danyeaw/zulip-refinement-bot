@@ -164,13 +164,14 @@ class BatchService:
         if active_batch.id != batch_id:
             raise BatchError("Batch ID mismatch.")
 
-        if active_batch.status != "active":
-            raise BatchError(f"Batch is not in active state (current: {active_batch.status}).")
+        if active_batch.status not in ("active", "discussing"):
+            raise BatchError(
+                f"Batch is not in active or discussing state (current: {active_batch.status})."
+            )
 
         self.database.set_batch_discussing(batch_id)
         logger.info("Batch moved to discussion phase", batch_id=batch_id, requester=requester)
 
-        # Update the batch status locally
         active_batch.status = "discussing"
         return active_batch
 
@@ -182,7 +183,7 @@ class BatchService:
         Args:
             batch_id: ID of the batch to complete discussion for
             requester: Name of the person requesting completion
-            final_estimates: Dict of issue_number -> (final_points, rationale)
+            final_estimates: Dict of issue_number -> (final_points, rationale) for any remaining items
 
         Returns:
             The completed batch data
@@ -206,20 +207,22 @@ class BatchService:
         if active_batch.status != "discussing":
             raise BatchError(f"Batch is not in discussion phase (current: {active_batch.status}).")
 
-        # Store final estimates
         for issue_number, (final_points, rationale) in final_estimates.items():
             self.database.store_final_estimate(batch_id, issue_number, final_points, rationale)
 
-        # Complete the batch
         self.database.complete_batch(batch_id)
+
+        # Get total final estimates count for logging
+        all_final_estimates = self.database.get_final_estimates(batch_id)
+        total_final_estimates = len(all_final_estimates)
+
         logger.info(
             "Discussion phase completed",
             batch_id=batch_id,
             requester=requester,
-            final_estimates_count=len(final_estimates),
+            total_final_estimates=total_final_estimates,
         )
 
-        # Update the batch status locally
         active_batch.status = "completed"
         return active_batch
 
@@ -406,7 +409,6 @@ class VotingService:
 
         # Store votes
         for issue_number, points in estimates.items():
-            # Remove any existing abstention for this issue
             self.database.remove_abstention_if_exists(batch_id, voter, issue_number)
 
             success, was_update = self.database.upsert_vote(batch_id, voter, issue_number, points)
@@ -419,7 +421,6 @@ class VotingService:
 
         # Store abstentions
         for issue_number in abstentions:
-            # Remove any existing vote for this issue
             self.database.remove_vote_if_exists(batch_id, voter, issue_number)
 
             success, was_update = self.database.upsert_abstention(batch_id, voter, issue_number)
@@ -463,15 +464,19 @@ class VotingService:
 class ResultsService:
     """Service for generating and analyzing estimation results."""
 
-    def __init__(self, config: Config, github_api: GitHubAPIInterface) -> None:
+    def __init__(
+        self, config: Config, github_api: GitHubAPIInterface, batch_service: BatchService
+    ) -> None:
         """Initialize results service.
 
         Args:
             config: Bot configuration
             github_api: GitHub API interface
+            batch_service: Batch service for accessing database
         """
         self.config = config
         self.github_api = github_api
+        self.batch_service = batch_service
 
     def generate_results_content(
         self,
@@ -493,7 +498,6 @@ class ResultsService:
         Returns:
             Formatted results content
         """
-        # Group votes by issue
         votes_by_issue: dict[str, list[EstimationVote]] = {}
         for vote in votes:
             if vote.issue_number not in votes_by_issue:
@@ -513,7 +517,6 @@ class ResultsService:
         consensus_issues = []
         discussion_issues = []
 
-        # Process each issue
         for issue in batch.issues:
             issue_votes = votes_by_issue.get(issue.issue_number, [])
             if not issue_votes:
@@ -528,12 +531,10 @@ class ResultsService:
             total_votes = len(estimates)
             consensus_percentage = (most_common_count / total_votes) * 100
 
-            # Calculate average
             average = self._calculate_average(estimates)
 
             # Determine consensus vs discussion needed (>50% for consensus)
             if most_common_count > total_votes * 0.5:
-                # Majority consensus
                 final_estimate = most_common_value
                 consensus_type = "perfect" if most_common_count == total_votes else "majority"
                 consensus_issues.append(
@@ -550,7 +551,6 @@ class ResultsService:
                 # Needs discussion - no clear majority
                 discussion_issues.append((issue, estimates, average, consensus_percentage))
 
-        # Generate consensus section
         if consensus_issues:
             results_content += "✅ **CONSENSUS REACHED**\n"
             for (
@@ -576,7 +576,6 @@ class ResultsService:
                 results_content += f"Estimates: {estimates_str}\n"
                 results_content += f"Consensus: {consensus_info} | Average: {average} | Final: **{final_estimate} points**\n\n"
 
-        # Generate discussion section
         if discussion_issues:
             results_content += "⚠️ **DISCUSSION NEEDED**\n"
             for issue, estimates, average, consensus_percentage in discussion_issues:
@@ -634,6 +633,164 @@ class ResultsService:
 
         return results_content
 
+    def generate_updated_results_content(
+        self,
+        batch: BatchData,
+        votes: list[EstimationVote],
+        vote_count: int,
+        total_voters: int,
+        batch_voters: list[str],
+    ) -> str:
+        """Generate updated estimation results showing completed items during discussion.
+
+        Args:
+            batch: Batch data
+            votes: All votes for the batch
+            vote_count: Number of voters who submitted votes
+            total_voters: Total number of expected voters
+            batch_voters: List of voters for this specific batch
+
+        Returns:
+            Formatted updated results content
+        """
+        votes_by_issue: dict[str, list[EstimationVote]] = {}
+        for vote in votes:
+            if vote.issue_number not in votes_by_issue:
+                votes_by_issue[vote.issue_number] = []
+            votes_by_issue[vote.issue_number].append(vote)
+
+        all_voters = set(batch_voters)
+        voted_voters = {vote.voter for vote in votes}
+        non_voters = all_voters - voted_voters
+
+        results_content = "🎲 **ESTIMATION RESULTS**\n\n"
+
+        if non_voters:
+            non_voter_mentions = ", ".join(f"@**{voter}**" for voter in sorted(non_voters))
+            results_content += f"Note: {non_voter_mentions} didn't vote in this batch.\n\n"
+
+        consensus_issues = []
+        discussion_issues = []
+        completed_issues = []
+
+        # Get existing final estimates
+        final_estimates = {}
+        if batch.id:
+            final_estimate_objs = self.batch_service.database.get_final_estimates(batch.id)
+            final_estimates = {est.issue_number: est for est in final_estimate_objs}
+
+        for issue in batch.issues:
+            issue_votes = votes_by_issue.get(issue.issue_number, [])
+
+            if issue.issue_number in final_estimates:
+                # Issue has been completed
+                completed_issues.append(issue)
+            elif not issue_votes:
+                continue
+            else:
+                estimates = [vote.points for vote in issue_votes]
+                estimates.sort()
+
+                # Analyze consensus
+                estimate_counts = Counter(estimates)
+                most_common_value, most_common_count = estimate_counts.most_common(1)[0]
+                total_votes = len(estimates)
+
+                if most_common_count > total_votes * 0.5:
+                    consensus_issues.append((issue, most_common_value, estimates))
+                else:
+                    discussion_issues.append((issue, estimates))
+
+        # Show completed issues first
+        if completed_issues:
+            results_content += "**✅ COMPLETED**\n\n"
+            for issue in completed_issues:
+                final_est = final_estimates[issue.issue_number]
+                title = (
+                    self.github_api.fetch_issue_title_by_url(issue.url)
+                    or f"Issue {issue.issue_number}"
+                )
+                results_content += (
+                    f"**Issue {issue.issue_number}** - {title}: **{final_est.final_points} points**"
+                )
+                if final_est.rationale:
+                    results_content += f" ({final_est.rationale})\n"
+                else:
+                    results_content += "\n"
+            results_content += "\n"
+
+        if consensus_issues:
+            results_content += "**✅ CONSENSUS REACHED**\n\n"
+            for issue, consensus_points, _estimates in consensus_issues:
+                title = (
+                    self.github_api.fetch_issue_title_by_url(issue.url)
+                    or f"Issue {issue.issue_number}"
+                )
+                results_content += (
+                    f"**Issue {issue.issue_number}** - {title}: **{consensus_points} points**\n"
+                )
+
+            results_content += "\n"
+
+        # Show remaining discussion issues
+        if discussion_issues:
+            results_content += "**⚠️ DISCUSSION NEEDED**\n\n"
+            for issue, estimates in discussion_issues:
+                title = (
+                    self.github_api.fetch_issue_title_by_url(issue.url)
+                    or f"Issue {issue.issue_number}"
+                )
+
+                avg_estimate = self._calculate_average(estimates)
+                min_est, max_est = min(estimates), max(estimates)
+
+                results_content += (
+                    f"**Issue {issue.issue_number}** - {title}\n"
+                    f"    Estimates: {', '.join(map(str, estimates))} "
+                    f"(avg: {avg_estimate}, range: {min_est}-{max_est})\n"
+                )
+
+                # Add questions for voters with outlying estimates
+                if estimates:
+                    # Lower threshold for discussion questions - any spread >= 3
+                    should_ask_questions = max_est - min_est >= 3
+                    if should_ask_questions:
+                        high_voters = [
+                            v.voter
+                            for v in votes_by_issue[issue.issue_number]
+                            if v.points == max_est
+                        ]
+                        low_voters = [
+                            v.voter
+                            for v in votes_by_issue[issue.issue_number]
+                            if v.points == min_est
+                        ]
+
+                        if high_voters:
+                            high_mentions = " @**".join(high_voters)
+                            results_content += (
+                                f"    @**{high_mentions}** : What complexity are you seeing "
+                                f"that pushes this to {max_est} points?\n"
+                            )
+                        if low_voters:
+                            low_mentions = " @**".join(low_voters)
+                            results_content += (
+                                f"    @**{low_mentions}** : What makes this feel simpler "
+                                f"({min_est} points) compared to the {max_est} point estimates?\n"
+                            )
+
+                results_content += "\n"
+
+        if discussion_issues:
+            results_content += (
+                "**🗣️ NEXT STEPS**\n"
+                "Continue discussion on remaining items. Complete individual items with:\n"
+                "`finish #issue: points rationale`\n\n"
+                "Example: `finish #15116: 5 After discussion we agreed it's medium complexity`\n"
+            )
+
+        return results_content
+
     def generate_finish_results(
         self,
         batch: BatchData,
@@ -656,7 +813,6 @@ class ResultsService:
         )
         results_content += "**✅ FINAL ESTIMATES**\n\n"
 
-        # Show consensus issues first
         for issue in batch.issues:
             issue_num = issue.issue_number
             if issue_num in consensus_estimates:

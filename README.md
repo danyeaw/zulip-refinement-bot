@@ -66,10 +66,12 @@ remove John
 ```
 
 ### Complete Discussion
-When consensus isn't reached, the facilitator can finalize:
+When consensus isn't reached, the facilitator can finalize individual items or multiple items:
 ```
 finish #15169: 5 After discussion we agreed it's medium complexity
+finish #15168: 3 Simple fix, #15167: 8 More complex than expected
 ```
+The system automatically updates results as items are completed and finishes the batch when all discussion items are done.
 
 ## Commands
 
@@ -77,7 +79,7 @@ finish #15169: 5 After discussion we agreed it's medium complexity
 - `status` - Show current session status
 - `complete` - Complete active batch and show results (facilitator only)
 - `cancel` - Cancel session (facilitator only)
-- `finish #issue: points rationale` - Complete discussion phase (facilitator only)
+- `finish #issue: points rationale` - Complete individual discussion items (facilitator only)
 
 ## Development
 

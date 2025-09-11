@@ -460,7 +460,7 @@ def test_migration_versions_final_estimates_indexes_created(temp_db: Path):
 def test_migration_versions_all_migrations_run_successfully(migration_runner: MigrationRunner):
     """Test that all migrations can be applied successfully."""
     applied = migration_runner.run_migrations()
-    expected_versions = ["001", "002", "003", "004", "005", "006", "007"]
+    expected_versions = ["001", "002", "003", "004", "005", "006", "007", "008"]
     assert applied == expected_versions
 
 
@@ -477,7 +477,7 @@ def test_migration_versions_migration_order_dependency(migration_runner: Migrati
 
     # Verify they are in correct order
     versions = [m.version for m in pending]
-    assert versions == ["001", "002", "003", "004", "005", "006", "007"]
+    assert versions == ["001", "002", "003", "004", "005", "006", "007", "008"]
 
 
 def test_migration_versions_complete_schema_after_all_migrations(temp_db: Path):
@@ -521,7 +521,7 @@ def test_migration_versions_rollback_all_migrations(migration_runner: MigrationR
     migration_runner.run_migrations()
 
     # Rollback in reverse order
-    versions_to_rollback = ["007", "006", "005", "004", "003", "002", "001"]
+    versions_to_rollback = ["008", "007", "006", "005", "004", "003", "002", "001"]
     for version in versions_to_rollback:
         migration_runner.rollback_migration(version)
 
@@ -550,7 +550,7 @@ def test_migration_versions_partial_rollback_and_reapply(migration_runner: Migra
 
     # Verify state
     applied = migration_runner.get_applied_migrations()
-    assert applied == {"001", "002", "005", "006", "007"}
+    assert applied == {"001", "002", "005", "006", "007", "008"}
 
     # Reapply migrations
     reapplied = migration_runner.run_migrations()
@@ -558,4 +558,4 @@ def test_migration_versions_partial_rollback_and_reapply(migration_runner: Migra
 
     # Verify final state
     final_applied = migration_runner.get_applied_migrations()
-    assert final_applied == {"001", "002", "003", "004", "005", "006", "007"}
+    assert final_applied == {"001", "002", "003", "004", "005", "006", "007", "008"}

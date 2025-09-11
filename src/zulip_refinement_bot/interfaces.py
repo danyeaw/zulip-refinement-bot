@@ -57,6 +57,9 @@ class DatabaseInterface(ABC):
     def update_batch_message_id(self, batch_id: int, message_id: int) -> None: ...
 
     @abstractmethod
+    def update_batch_results_message_id(self, batch_id: int, results_message_id: int) -> None: ...
+
+    @abstractmethod
     def add_batch_voters(self, batch_id: int, voters: list[str]) -> None: ...
 
     @abstractmethod
