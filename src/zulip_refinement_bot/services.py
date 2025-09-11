@@ -522,42 +522,65 @@ class ResultsService:
             estimates = [vote.points for vote in issue_votes]
             estimates.sort()
 
-            # Analyze consensus
+            # Analyze consensus using simple majority rule
             estimate_counts = Counter(estimates)
-            most_common = estimate_counts.most_common()
+            most_common_value, most_common_count = estimate_counts.most_common(1)[0]
+            total_votes = len(estimates)
+            consensus_percentage = (most_common_count / total_votes) * 100
 
-            # Determine consensus vs discussion needed
-            if len(most_common) == 1:
-                # Perfect consensus
-                final_estimate = most_common[0][0]
-                consensus_issues.append((issue, estimates, final_estimate, "perfect"))
-            elif len(estimates) >= 3:
-                # Check for clustering
-                sorted_estimates = sorted(estimates)
-                clusters = self._find_clusters(sorted_estimates)
+            # Calculate average
+            average = self._calculate_average(estimates)
 
-                if len(clusters) == 1 and len(clusters[0]) >= len(estimates) * 0.6:
-                    # Strong cluster consensus
-                    cluster = clusters[0]
-                    final_estimate = max(cluster)  # Take highest in cluster for safety
-                    consensus_issues.append((issue, estimates, final_estimate, "cluster"))
-                else:
-                    # Needs discussion
-                    discussion_issues.append((issue, estimates, clusters))
+            # Determine consensus vs discussion needed (>50% for consensus)
+            if most_common_count > total_votes * 0.5:
+                # Majority consensus
+                final_estimate = most_common_value
+                consensus_type = "perfect" if most_common_count == total_votes else "majority"
+                consensus_issues.append(
+                    (
+                        issue,
+                        estimates,
+                        final_estimate,
+                        consensus_type,
+                        average,
+                        consensus_percentage,
+                    )
+                )
             else:
-                # Too few votes for meaningful analysis
-                discussion_issues.append((issue, estimates, []))
+                # Needs discussion - no clear majority
+                discussion_issues.append((issue, estimates, average, consensus_percentage))
 
         # Generate consensus section
         if consensus_issues:
             results_content += "✅ **CONSENSUS REACHED**\n"
-            for issue, estimates, final_estimate, consensus_type in consensus_issues:
+            for (
+                issue,
+                estimates,
+                final_estimate,
+                consensus_type,
+                average,
+                consensus_percentage,
+            ) in consensus_issues:
                 estimates_str = ", ".join(map(str, estimates))
-                if consensus_type == "perfect":
-                    cluster_info = "(perfect consensus)"
-                else:
-                    cluster_info = f"({self._format_cluster_info(estimates, final_estimate)})"
+                consensus_info = (
+                    f"{consensus_percentage:.0f}% consensus"
+                    if consensus_type == "majority"
+                    else "perfect consensus"
+                )
 
+                title = (
+                    self.github_api.fetch_issue_title_by_url(issue.url)
+                    or f"Issue {issue.issue_number}"
+                )
+                results_content += f"Issue {issue.issue_number} - {title}\n"
+                results_content += f"Estimates: {estimates_str}\n"
+                results_content += f"Consensus: {consensus_info} | Average: {average} | Final: **{final_estimate} points**\n\n"
+
+        # Generate discussion section
+        if discussion_issues:
+            results_content += "⚠️ **DISCUSSION NEEDED**\n"
+            for issue, estimates, average, consensus_percentage in discussion_issues:
+                estimates_str = ", ".join(map(str, estimates))
                 title = (
                     self.github_api.fetch_issue_title_by_url(issue.url)
                     or f"Issue {issue.issue_number}"
@@ -565,34 +588,14 @@ class ResultsService:
                 results_content += f"Issue {issue.issue_number} - {title}\n"
                 results_content += f"Estimates: {estimates_str}\n"
                 results_content += (
-                    f"Cluster: {cluster_info} | Final: **{final_estimate} points**\n\n"
+                    f"Highest consensus: {consensus_percentage:.0f}% | Average: {average}\n"
                 )
-
-        # Generate discussion section
-        if discussion_issues:
-            results_content += "⚠️ **DISCUSSION NEEDED**\n"
-            for issue, estimates, clusters in discussion_issues:
-                estimates_str = ", ".join(map(str, estimates))
-                title = (
-                    self.github_api.fetch_issue_title_by_url(issue.url)
-                    or f"Issue {issue.issue_number}"
-                )
-                results_content += f"Issue {issue.issue_number} - {title}\n"
-                results_content += f"Estimates: {estimates_str}\n"
-
-                if len(clusters) > 1:
-                    cluster_strs = []
-                    for cluster in clusters:
-                        cluster_strs.append(f"[{','.join(map(str, cluster))}]")
-                    results_content += f"Clusters: {' vs '.join(cluster_strs)} - Mixed agreement\n"
-                else:
-                    results_content += "Wide spread - Needs discussion\n"
 
                 # Add questions for voters with outlying estimates
                 if estimates:
                     min_est, max_est = min(estimates), max(estimates)
-                    # Lower threshold for discussion questions - any spread >= 3 or multiple clusters
-                    should_ask_questions = (max_est - min_est >= 3) or (len(clusters) > 1)
+                    # Lower threshold for discussion questions - any spread >= 3
+                    should_ask_questions = max_est - min_est >= 3
                     if should_ask_questions:
                         high_voters = [
                             v.voter
@@ -607,28 +610,16 @@ class ResultsService:
 
                         if high_voters:
                             high_mentions = " @**".join(high_voters)
-                            if len(clusters) > 1:
-                                results_content += (
-                                    f"    @**{high_mentions}** : What complexity or risks are you seeing "
-                                    f"that justify {max_est} points over the {min_est}-{sorted(estimates)[len(estimates) // 2]} point estimates?\n"
-                                )
-                            else:
-                                results_content += (
-                                    f"    @**{high_mentions}** : What complexity are you seeing "
-                                    f"that pushes this to {max_est} points?\n"
-                                )
+                            results_content += (
+                                f"    @**{high_mentions}** : What complexity are you seeing "
+                                f"that pushes this to {max_est} points?\n"
+                            )
                         if low_voters:
                             low_mentions = " @**".join(low_voters)
-                            if len(clusters) > 1:
-                                results_content += (
-                                    f"    @**{low_mentions}** : What makes this feel simpler "
-                                    f"({min_est} points) compared to the {max_est} point estimates?\n"
-                                )
-                            else:
-                                results_content += (
-                                    f"    @**{low_mentions}** : What's making this feel like "
-                                    f"a smaller story ({min_est} points)?\n"
-                                )
+                            results_content += (
+                                f"    @**{low_mentions}** : What makes this feel simpler "
+                                f"({min_est} points) compared to the {max_est} point estimates?\n"
+                            )
 
                 results_content += "\n"
 
@@ -703,44 +694,18 @@ class ResultsService:
 
         return results_content
 
-    def _find_clusters(self, sorted_estimates: list[int]) -> list[list[int]]:
-        """Find clusters in sorted estimates using a simple gap-based approach."""
-        if not sorted_estimates:
-            return []
+    def _calculate_average(self, estimates: list[int]) -> float:
+        """Calculate the average of numeric estimates.
 
-        clusters = [[sorted_estimates[0]]]
+        Args:
+            estimates: List of numeric vote estimates
 
-        for i in range(1, len(sorted_estimates)):
-            current = sorted_estimates[i]
-            previous = sorted_estimates[i - 1]
-
-            # If gap is too large, start new cluster
-            # Use Fibonacci gaps: 1->2 (gap 1), 2->3 (gap 1), 3->5 (gap 2), 5->8 (gap 3), etc.
-            if current - previous > 2:
-                clusters.append([current])
-            else:
-                clusters[-1].append(current)
-
-        return clusters
-
-    def _format_cluster_info(self, estimates: list[int], final_estimate: int) -> str:
-        """Format cluster information for display."""
-        clusters = self._find_clusters(sorted(estimates))
-
-        if len(clusters) == 1:
-            cluster = clusters[0]
-            if len(set(cluster)) == 1:
-                return "tight consensus"
-            else:
-                cluster_str = ",".join(map(str, sorted(set(cluster))))
-                outliers = [est for est in estimates if est not in cluster]
-                if outliers:
-                    outlier_str = ",".join(map(str, sorted(set(outliers))))
-                    return f"{cluster_str} (one {outlier_str} outlier)"
-                else:
-                    return f"{cluster_str} cluster"
-        else:
-            return "mixed clusters"
+        Returns:
+            Average estimate rounded to 1 decimal place
+        """
+        if not estimates:
+            return 0.0
+        return round(sum(estimates) / len(estimates), 1)
 
 
 class VoterValidationService:

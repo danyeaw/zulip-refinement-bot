@@ -1377,22 +1377,11 @@ Posting to #{self.config.stream_name} now..."""
 
             # Analyze consensus
             estimate_counts = Counter(estimates)
-            most_common = estimate_counts.most_common()
+            most_common_value, most_common_count = estimate_counts.most_common(1)[0]
+            total_votes = len(estimates)
 
-            # Determine if there was consensus
-            if len(most_common) == 1:
-                # Perfect consensus
-                consensus_estimates[issue.issue_number] = most_common[0][0]
-            elif len(estimates) >= 3:
-                # Check for clustering
-                clusters = self.results_service._find_clusters(sorted(estimates))
-
-                if len(clusters) == 1 and len(clusters[0]) >= len(estimates) * 0.6:
-                    # Strong cluster consensus
-                    cluster = clusters[0]
-                    consensus_estimates[issue.issue_number] = max(
-                        cluster
-                    )  # Take highest in cluster for safety
+            if most_common_count > total_votes * 0.5:
+                consensus_estimates[issue.issue_number] = most_common_value
 
         return consensus_estimates
 
